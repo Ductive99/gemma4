@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from redpen import config
-from redpen.events import Snippet, TranscriptSegment, Verdict
+from redpen.events import SessionContext, Snippet, TranscriptSegment, Verdict
 from redpen.pipeline import DebateFactCheckPipeline
 
 LONG = "x" * (config.CLAIM_SCAN_MIN_CHARS + 1)
@@ -29,6 +29,7 @@ async def test_handle_segment_emits_transcript_claim_and_verdict():
     with patch("redpen.pipeline.extract_claims", return_value=[{"claim": "Unemployment hit 3%.", "speaker": "Speaker B",
                                  "search_query": "unemployment rate 3 percent"}]) as mock_extract, \
          patch("redpen.pipeline.search_evidence", return_value=[Snippet("t", "s", "https://x", "x")]) as mock_search, \
+         patch("redpen.pipeline.enrich", side_effect=lambda s, c: s), \
          patch("redpen.pipeline.judge_claim") as mock_judge:
         mock_judge.return_value = Verdict(
             claim_id="", claim_text="Unemployment hit 3%.",
@@ -207,3 +208,40 @@ async def test_prefetch_reports_a_usable_error_when_captions_are_missing():
 
     err = next(e for e in events if e["type"] == "error")
     assert "caption track" in err["message"]
+
+
+@pytest.mark.asyncio
+async def test_claim_is_timestamped_to_the_segment_it_was_spoken_in():
+    """Cards must surface when the claim is said, not when the scan happened."""
+    events, emit = _collector()
+    pipeline = DebateFactCheckPipeline("https://youtu.be/abc", emit=emit, mode="prefetch")
+
+    segments = [
+        TranscriptSegment(0.0, 10.0, "Let me open with some general remarks. " + LONG),
+        TranscriptSegment(10.0, 20.0,
+                          "Unemployment fell to three point five percent in 2019. " + LONG),
+        TranscriptSegment(20.0, 30.0, "Anyway, moving on to a different subject entirely. " + LONG),
+    ]
+    spotted = [{"claim": "Unemployment fell to 3.5 percent in 2019.",
+                "speaker": "A", "search_query": "q"}]
+    calls = {"n": 0}
+
+    def spot(*a, **k):
+        calls["n"] += 1
+        return spotted if calls["n"] == 3 else []
+
+    with patch("redpen.youtube.fetch_transcript", return_value=segments), \
+         patch("redpen.ingest.fetch_context", return_value=SessionContext()), \
+         patch("redpen.pipeline.extract_claims", side_effect=spot), \
+         patch("redpen.pipeline.search_evidence", return_value=[]), \
+         patch("redpen.pipeline.enrich", side_effect=lambda s, c: s), \
+         patch("redpen.pipeline.judge_claim") as mock_judge:
+        mock_judge.return_value = Verdict(
+            claim_id="", claim_text=spotted[0]["claim"], label="TRUE",
+            confidence=0.9, explanation="", sources=[], speaker="A")
+        await pipeline._run_prefetch(asyncio.get_event_loop())
+
+    claim = next(e for e in events if e["type"] == "claim")
+    # spotted on the third segment, but spoken in the second
+    assert claim["timestamp"] == 10.0
+    assert claim["reveal_at"] == 10.0

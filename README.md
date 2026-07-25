@@ -116,6 +116,15 @@ Chosen from the dropdown in the UI, or via `mode` in `POST /api/sessions`:
 | `transcript` | bypassed | **real** | **real** | Replay `demo/sample_debate.json`; the agent's reasoning is fully live |
 | `cached` | bypassed | bypassed | bypassed | Replay a recorded run verbatim, fully offline |
 
+#### Evidence: full pages, not snippets
+
+A SerpApi snippet is ~30 words of SEO text and frequently omits the number that
+decides the claim, which is how a checkable claim ends up `UNVERIFIED`. So the top
+results are fetched in parallel, stripped to text, and the passages overlapping the
+claim are extracted and handed to the judge, which is told which entries are full
+pages and which are snippet-only. Any fetch that fails falls back to the snippet.
+Disable with `FETCH_PAGES=0`.
+
 #### `prefetch` — working ahead of the playhead
 
 A recorded video's transcript already exists, so there is no reason to decode audio
@@ -124,9 +133,10 @@ drops ffmpeg and Whisper from the path and makes analysis run far faster than
 playback, so the agent finishes the whole video before the viewer is a minute into
 it.
 
-Each result is then tagged with the video timestamp it is due at — a claim card at
-`REVEAL_CLAIM_DELAY` after the claim is spoken, its verdict at
-`REVEAL_VERDICT_DELAY` — and the browser holds it until the player's *real*
+Each result is then tagged with the video timestamp it is due at — the claim card at
+the moment it is actually spoken (matched back to its own transcript segment, not the
+one that happened to trigger the scan), its verdict `REVEAL_VERDICT_DELAY` later —
+and the browser holds it until the player's *real*
 playhead reaches that point. Pausing, seeking and scrubbing all keep the overlay in
 sync, exactly like a subtitle track.
 
@@ -208,8 +218,8 @@ eviction, failure handling, and the replay sources.
 
 ## Honest limitations
 
-- Verdicts are only as good as the top few SerpApi snippets — the agent reads search
-  results, not primary sources.
+- The agent fetches the pages behind the search results and extracts the passages
+  matching the claim, but it still reads web pages rather than primary datasets.
 - Whisper errors propagate: a misheard number becomes a misjudged claim.
 - Claim spotting is tuned to be eager; it prefers flagging a borderline claim over
   missing one, so `UNVERIFIED` is common and expected.

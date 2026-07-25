@@ -94,6 +94,9 @@ class Snippet:
     # time-sensitive, so undated evidence is how a correct claim gets rated
     # false against numbers from a different year.
     date: str = ""
+    # True once `text` holds passages pulled from the page itself rather than
+    # the search snippet.
+    full_page: bool = False
 
 
 @dataclass

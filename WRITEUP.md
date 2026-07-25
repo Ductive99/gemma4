@@ -141,8 +141,9 @@ landing.
 
 ## Limitations we are honest about
 
-- Verdicts are only as good as the top few search snippets. Red Pen reads search
-  results, not primary sources.
+- Red Pen fetches the pages behind the search results and extracts the passages
+  bearing on the claim — a 30-word snippet usually omits the deciding number — but
+  it still reads web pages rather than primary datasets.
 - Whisper errors propagate: a misheard number becomes a misjudged claim.
 - Speaker labels come from the transcript in replay mode. Live audio has no
   diarisation, so Gemma attributes from context and cues alone — the weakest link
