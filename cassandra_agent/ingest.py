@@ -9,6 +9,35 @@ import shutil
 import subprocess
 
 from . import config
+from .events import SessionContext
+
+
+def fetch_context(url: str) -> SessionContext:
+    """Reads the video's own metadata so the agent knows what it is watching.
+
+    The title and description of a debate upload usually name the participants,
+    which is what lets claim spotting resolve "he"/"my opponent" into a name that
+    can actually be searched for. Best-effort: a failure here degrades the
+    fact-checking, it does not stop the run.
+    """
+    try:
+        import yt_dlp
+
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception:  # noqa: BLE001 - context is an enhancement, never a hard dependency
+        return SessionContext()
+
+    upload_date = info.get("upload_date") or ""
+    if len(upload_date) == 8:  # YYYYMMDD -> YYYY-MM-DD
+        upload_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:]}"
+
+    return SessionContext(
+        title=info.get("title") or "",
+        channel=info.get("uploader") or info.get("channel") or "",
+        upload_date=upload_date,
+        description=(info.get("description") or "")[:1000],
+    )
 
 
 class YoutubeAudioSource:

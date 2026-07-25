@@ -50,14 +50,38 @@ YouTube / live stream
 
 Gemma runs **twice per claim, in two deliberately separate roles**:
 
-1. **Claim spotting** (`claims.py`) — given a rolling window of live speech, Gemma
-   decides which sentences are *checkable factual assertions* rather than opinion,
-   prediction or rhetoric, resolves pronouns into self-contained statements, and
-   suppresses claims it has already flagged. This is the judgement call that makes the
-   agent autonomous; a keyword matcher cannot do it.
-2. **Judging** (`judge.py`) — given the claim and the retrieved evidence *only*,
-   Gemma returns a structured verdict, a confidence, an explanation, and which
-   sources support it.
+1. **Claim spotting** (`claims.py`) — given the video's context, a speaker-labelled
+   window of live speech, and the claims already flagged, Gemma decides which
+   sentences are *checkable factual assertions* rather than opinion, prediction or
+   rhetoric; attributes each to whoever said it; resolves pronouns into
+   self-contained statements; and **writes the web search that would settle it**.
+   This is the judgement call that makes the agent autonomous; a keyword matcher
+   cannot do it.
+2. **Judging** (`judge.py`) — given the claim, who said it, and the retrieved
+   evidence *only*, Gemma returns a structured verdict, a confidence, an
+   explanation, and which sources support it.
+
+### Knowing who is talking
+
+A debate claim is usually unanswerable stripped of its speaker. "He cut taxes by
+30%", "my opponent voted against it", "under my administration inflation fell" are
+all useless as raw search strings. So the agent establishes context *before* the
+first claim is spotted:
+
+- **live mode** reads the video's own metadata through yt-dlp — title, channel,
+  publication date, description — which for a debate upload usually names the
+  participants;
+- **transcript mode** reads the `context` block the transcript file declares.
+
+That context, plus speaker-labelled transcript, goes into the claim-spotting prompt.
+Gemma resolves the pronoun to a name and puts that name into the search query, so
+SerpApi is asked `Marc Devereux vote energy bill` rather than `voted against it`.
+The judge is told the speaker too — so it can reject evidence that turns out to be
+about somebody else, while weighing both sides by the same standard.
+
+Speaker labels come from the transcript in replay mode. Live audio has no
+diarisation, so Gemma attributes from context and cues alone; that is the weakest
+link in the chain and the honest place to start if you extend this.
 
 Both calls use Gemma's JSON-constrained output so the agent's decisions are typed data
 that drive control flow, not prose for a human to read.

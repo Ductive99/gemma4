@@ -28,19 +28,30 @@ FAKE_EVIDENCE = [
 ]
 
 
-def fake_extract(window, flagged, model=None):
+FARROW, DEVEREUX = "Dr. Lena Farrow", "Marc Devereux"
+
+# (transcript cue, claim, speaker, the speaker-aware query Gemma would write)
+TOPICS = [
+    ("AI Act entered", "The EU AI Act entered into force in August 2024.",
+     FARROW, "EU AI Act entry into force date 2024"),
+    ("bans facial recognition", "The EU AI Act bans facial recognition outright across the EU.",
+     FARROW, "EU AI Act facial recognition ban exceptions"),
+    ("1.5 percent", "Data centres consumed about 1.5% of global electricity in 2024.",
+     DEVEREUX, "IEA data centre share global electricity 2024"),
+    ("cheapest electricity", "The IEA said in 2020 that solar is the cheapest electricity in history.",
+     FARROW, "IEA World Energy Outlook 2020 cheapest electricity history"),
+    ("seventy percent", "France generates more than 70% of its electricity from nuclear power.",
+     DEVEREUX, "France nuclear share of electricity generation 2024"),
+    ("billion dollars", "Training a single frontier AI model costs over $1 billion per run.",
+     DEVEREUX, "frontier AI model training run cost estimate"),
+]
+
+
+def fake_extract(window, flagged, model=None, context_block=""):
     """Spots one claim per topic, the first time that topic appears."""
-    topics = [
-        ("AI Act", "entered into force", "The EU AI Act entered into force in August 2024."),
-        ("bans facial recognition", "", "The EU AI Act bans facial recognition outright across the EU."),
-        ("1.5 percent", "", "Data centres consumed about 1.5% of global electricity in 2024."),
-        ("cheapest electricity", "", "The IEA said in 2020 that solar is the cheapest electricity in history."),
-        ("seventy percent", "", "France generates more than 70% of its electricity from nuclear power."),
-        ("billion dollars", "", "Training a single frontier AI model costs over $1 billion per run."),
-    ]
-    for needle, _extra, claim in topics:
-        if needle.lower() in window.lower() and claim not in flagged:
-            return [claim]
+    for cue, claim, speaker, query in TOPICS:
+        if cue.lower() in window.lower() and claim not in flagged:
+            return [{"claim": claim, "speaker": speaker, "search_query": query}]
     return []
 
 
@@ -64,11 +75,11 @@ VERDICTS = {
 }
 
 
-def fake_judge(claim_text, snippets, model=None):
+def fake_judge(claim_text, snippets, model=None, speaker="", context_block=""):
     label, confidence, explanation = VERDICTS.get(
         claim_text, ("UNVERIFIED", 0.3, "[REHEARSAL STUB] No canned verdict for this claim."))
     return Verdict(claim_id="", claim_text=claim_text, label=label, confidence=confidence,
-                   explanation=explanation, sources=[s.link for s in snippets])
+                   explanation=explanation, sources=[s.link for s in snippets], speaker=speaker)
 
 
 def main() -> None:

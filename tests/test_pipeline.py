@@ -26,7 +26,8 @@ async def test_handle_segment_emits_transcript_claim_and_verdict():
     loop = asyncio.get_event_loop()
     segment = TranscriptSegment(start=0.0, end=5.0, text=LONG)
 
-    with patch("cassandra_agent.pipeline.extract_claims", return_value=["Unemployment hit 3%."]) as mock_extract, \
+    with patch("cassandra_agent.pipeline.extract_claims", return_value=[{"claim": "Unemployment hit 3%.", "speaker": "Speaker B",
+                                 "search_query": "unemployment rate 3 percent"}]) as mock_extract, \
          patch("cassandra_agent.pipeline.search_evidence", return_value=[Snippet("t", "s", "https://x", "x")]) as mock_search, \
          patch("cassandra_agent.pipeline.judge_claim") as mock_judge:
         mock_judge.return_value = Verdict(
@@ -65,7 +66,7 @@ async def test_handle_segment_skips_already_flagged_claims():
     pipeline._flagged_claims.append("Already known claim.")
     loop = asyncio.get_event_loop()
 
-    with patch("cassandra_agent.pipeline.extract_claims", return_value=["Already known claim."]), \
+    with patch("cassandra_agent.pipeline.extract_claims", return_value=[{"claim": "Already known claim.", "speaker": "", "search_query": "q"}]), \
          patch("cassandra_agent.pipeline.search_evidence") as mock_search, \
          patch("cassandra_agent.pipeline.judge_claim") as mock_judge:
         await pipeline._handle_segment(TranscriptSegment(0.0, 5.0, LONG), loop)
@@ -97,7 +98,7 @@ async def test_fact_check_failure_emits_unverified_instead_of_crashing():
     pipeline = DebateFactCheckPipeline(emit=emit)
     loop = asyncio.get_event_loop()
 
-    with patch("cassandra_agent.pipeline.extract_claims", return_value=["a claim"]), \
+    with patch("cassandra_agent.pipeline.extract_claims", return_value=[{"claim": "a claim", "speaker": "", "search_query": "q"}]), \
          patch("cassandra_agent.pipeline.search_evidence", side_effect=RuntimeError("serpapi down")):
         await pipeline._handle_segment(TranscriptSegment(0.0, 5.0, LONG), loop)
         await asyncio.sleep(0.05)
@@ -120,3 +121,43 @@ async def test_run_records_events_for_offline_replay():
     assert len(pipeline.recorded) == 1
     assert pipeline.recorded[0]["event"]["type"] == "transcript"
     assert "at" in pipeline.recorded[0]
+
+
+@pytest.mark.asyncio
+async def test_speaker_aware_search_query_is_what_reaches_serpapi():
+    """The whole point of speaker context: search the resolved query, not the raw claim."""
+    events, emit = _collector()
+    pipeline = DebateFactCheckPipeline(emit=emit)
+    loop = asyncio.get_event_loop()
+
+    spotted = [{"claim": "Marc Devereux voted against the energy bill.",
+                "speaker": "Dr. Lena Farrow",
+                "search_query": "Marc Devereux vote energy bill"}]
+
+    with patch("cassandra_agent.pipeline.extract_claims", return_value=spotted), \
+         patch("cassandra_agent.pipeline.search_evidence", return_value=[]) as mock_search, \
+         patch("cassandra_agent.pipeline.judge_claim") as mock_judge:
+        mock_judge.return_value = Verdict(
+            claim_id="", claim_text=spotted[0]["claim"], label="UNVERIFIED",
+            confidence=0.2, explanation="", sources=[], speaker="Dr. Lena Farrow")
+        await pipeline._handle_segment(TranscriptSegment(0.0, 5.0, LONG), loop)
+        await asyncio.sleep(0.05)
+
+    assert mock_search.call_args[0][0] == "Marc Devereux vote energy bill"
+    # and the judge is told who spoke, so it can reject evidence about someone else
+    assert mock_judge.call_args[0][3] == "Dr. Lena Farrow"
+    claim_ev = next(e for e in events if e["type"] == "claim")
+    assert claim_ev["speaker"] == "Dr. Lena Farrow"
+
+
+@pytest.mark.asyncio
+async def test_transcript_window_is_speaker_labelled():
+    events, emit = _collector()
+    pipeline = DebateFactCheckPipeline(emit=emit)
+    loop = asyncio.get_event_loop()
+
+    with patch("cassandra_agent.pipeline.extract_claims", return_value=[]) as mock_extract:
+        await pipeline._handle_segment(
+            TranscriptSegment(0.0, 5.0, LONG, speaker="Marc Devereux"), loop)
+
+    assert mock_extract.call_args[0][0].startswith("Marc Devereux: ")

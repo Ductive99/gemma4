@@ -29,7 +29,7 @@ from typing import Awaitable, Callable
 from . import config, sources
 from .claims import extract_claims
 from .evidence import search_evidence
-from .events import Claim, TranscriptSegment
+from .events import Claim, SessionContext, TranscriptSegment
 from .judge import judge_claim
 
 EmitFn = Callable[[dict], Awaitable[None]]
@@ -54,6 +54,7 @@ class DebateFactCheckPipeline:
         self.judge_model = ollama_model or config.JUDGE_MODEL
         self.serpapi_key = serpapi_key if serpapi_key is not None else config.SERPAPI_API_KEY
 
+        self.context = SessionContext()
         self._stop_event = threading.Event()
         self._window: list[TranscriptSegment] = []
         self._flagged_claims: list[str] = []
@@ -78,6 +79,10 @@ class DebateFactCheckPipeline:
 
         loop = asyncio.get_event_loop()
         queue: "asyncio.Queue[TranscriptSegment | None]" = asyncio.Queue()
+
+        # Resolve who/what we're watching before any claim is spotted, so the
+        # very first claim already benefits from knowing the participants.
+        await self._load_context(loop)
 
         def produce() -> None:
             try:
@@ -108,6 +113,20 @@ class DebateFactCheckPipeline:
                 # let in-flight fact-checks finish so their verdicts still land
                 await asyncio.gather(*pending, return_exceptions=True)
             await self._emit({"type": "done"})
+
+    async def _load_context(self, loop: asyncio.AbstractEventLoop) -> None:
+        try:
+            if self.mode == "transcript":
+                self.context = await loop.run_in_executor(
+                    None, sources.transcript_context, self.source_path
+                )
+            elif self.youtube_url:
+                from .ingest import fetch_context
+
+                self.context = await loop.run_in_executor(None, fetch_context, self.youtube_url)
+        except Exception:  # noqa: BLE001 - run without context rather than not at all
+            self.context = SessionContext()
+        await self._emit(self.context.to_event())
 
     async def _run_cached(self) -> None:
         loop = asyncio.get_event_loop()
@@ -146,23 +165,31 @@ class DebateFactCheckPipeline:
         if self._scan_in_flight or self._unscanned_chars < config.CLAIM_SCAN_MIN_CHARS:
             return
 
-        window_text = " ".join(s.text for s in self._window)
+        # Speaker-labelled, so Gemma can attribute claims and resolve pronouns.
+        window_text = "\n".join(s.labelled() for s in self._window)
         self._unscanned_chars = 0
         self._scan_in_flight = True
         try:
             recent = self._flagged_claims[-config.MAX_FLAGGED_CLAIMS_MEMORY:]
             new_claims = await loop.run_in_executor(
-                None, extract_claims, window_text, recent, self.claim_model
+                None, extract_claims, window_text, recent,
+                self.claim_model, self.context.to_prompt_block(),
             )
         finally:
             self._scan_in_flight = False
 
-        for claim_text in new_claims:
+        for entry in new_claims:
+            claim_text = entry["claim"]
             if claim_text in self._flagged_claims:
                 continue
             self._flagged_claims.append(claim_text)
             claim = Claim(
-                id=uuid.uuid4().hex, text=claim_text, context=window_text, timestamp=segment.end
+                id=uuid.uuid4().hex,
+                text=claim_text,
+                context=window_text,
+                timestamp=segment.end,
+                speaker=entry.get("speaker", "") or segment.speaker,
+                search_query=entry.get("search_query", "") or claim_text,
             )
             await self._emit(claim.to_event())
             task = asyncio.create_task(self._fact_check(claim, loop))
@@ -172,17 +199,19 @@ class DebateFactCheckPipeline:
 
     async def _fact_check(self, claim: Claim, loop: asyncio.AbstractEventLoop) -> None:
         try:
+            # Search Gemma's speaker-aware query, not the raw claim text.
             snippets = await loop.run_in_executor(
-                None, search_evidence, claim.text, self.serpapi_key
+                None, search_evidence, claim.search_query, self.serpapi_key
             )
             verdict = await loop.run_in_executor(
-                None, judge_claim, claim.text, snippets, self.judge_model
+                None, judge_claim, claim.text, snippets, self.judge_model,
+                claim.speaker, self.context.to_prompt_block(),
             )
             verdict.claim_id = claim.id
             await self._emit(verdict.to_event())
         except Exception as exc:  # noqa: BLE001 - one bad claim must not kill the run
             await self._emit({
                 "type": "verdict", "claim_id": claim.id, "claim_text": claim.text,
-                "label": "UNVERIFIED", "confidence": 0.0,
+                "speaker": claim.speaker, "label": "UNVERIFIED", "confidence": 0.0,
                 "explanation": f"Fact-check failed: {exc}", "sources": [],
             })

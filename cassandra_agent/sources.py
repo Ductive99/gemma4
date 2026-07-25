@@ -15,7 +15,22 @@ import time
 from pathlib import Path
 
 from . import config
-from .events import TranscriptSegment
+from .events import SessionContext, TranscriptSegment
+
+
+def transcript_context(path) -> SessionContext:
+    """Reads the `context` block a transcript file declares about itself."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return SessionContext()
+    raw = data.get("context", {})
+    return SessionContext(
+        title=raw.get("title", data.get("title", "")),
+        channel=raw.get("channel", ""),
+        upload_date=raw.get("upload_date", ""),
+        description=raw.get("description", ""),
+        participants=raw.get("participants", []),
+    )
 
 
 def live_segments(youtube_url: str, stop_event):
@@ -46,7 +61,10 @@ def transcript_segments(path, stop_event, speed: float = None, realtime: bool = 
         if stop_event.is_set():
             return
         segment = TranscriptSegment(
-            start=float(raw["start"]), end=float(raw["end"]), text=raw["text"].strip()
+            start=float(raw["start"]),
+            end=float(raw["end"]),
+            text=raw["text"].strip(),
+            speaker=raw.get("speaker", ""),
         )
         if realtime:
             # Release at the segment's START so captions appear as the words are
