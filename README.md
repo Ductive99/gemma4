@@ -1,0 +1,169 @@
+# Cassandra Live — an autonomous debate fact-checker built on Gemma 4
+
+**Paris Gemma 4 Hackathon · Track 2 — Autonomous Agents**
+
+Cassandra listens to a debate as it happens, decides on its own which sentences are
+worth checking, goes and finds evidence on the open web, and returns a verdict with
+sources — while the speaker is still talking.
+
+It is an agent, not a chatbot: nobody hands it a claim. It takes observable actions
+(retrieve audio, transcribe, search, judge) against a live, unscripted input stream.
+
+---
+
+## The problem
+
+Fact-checking is too slow to matter. A false claim made in a televised debate reaches
+its audience instantly; the correction arrives the next morning, to a fraction of that
+audience, long after the claim has done its work. The bottleneck is not knowledge — the
+evidence is usually a single web search away — it is that a human has to notice the
+claim, decide it is checkable, search, read, and judge. That loop takes minutes.
+
+Cassandra closes that loop in seconds, locally.
+
+## How it works
+
+```
+YouTube / live stream
+        │  yt-dlp + ffmpeg
+        ▼
+   PCM audio chunks
+        │  faster-whisper (on-device)
+        ▼
+ timestamped transcript ──► rolling 25s window
+                                  │
+                                  │  ① Gemma 4 — claim spotting
+                                  ▼
+                          new checkable claims
+                                  │  ② SerpApi — evidence retrieval
+                                  ▼
+                          web evidence snippets
+                                  │  ③ Gemma 4 — verdict
+                                  ▼
+              TRUE / FALSE / MISLEADING / UNVERIFIED + confidence + sources
+                                  │  WebSocket
+                                  ▼
+                        live browser overlay
+```
+
+### Where Gemma 4 is essential
+
+Gemma runs **twice per claim, in two deliberately separate roles**:
+
+1. **Claim spotting** (`claims.py`) — given a rolling window of live speech, Gemma
+   decides which sentences are *checkable factual assertions* rather than opinion,
+   prediction or rhetoric, resolves pronouns into self-contained statements, and
+   suppresses claims it has already flagged. This is the judgement call that makes the
+   agent autonomous; a keyword matcher cannot do it.
+2. **Judging** (`judge.py`) — given the claim and the retrieved evidence *only*,
+   Gemma returns a structured verdict, a confidence, an explanation, and which
+   sources support it.
+
+Both calls use Gemma's JSON-constrained output so the agent's decisions are typed data
+that drive control flow, not prose for a human to read.
+
+### Separation of powers
+
+This project began as a falsification engine whose core rule was that **Gemma never
+judges its own reasoning**. That rule survived into the fact-checker, and it is what
+keeps verdicts honest: the judging call is given a claim someone *else* made plus
+evidence someone *else* retrieved. It has no memory of, and no stake in, the claim's
+origin — so it cannot rationalise its way into defending a previous answer.
+
+## Running it
+
+```bash
+pip install -r requirements.txt
+ollama pull gemma4          # and make sure `ollama serve` is running
+export SERPAPI_API_KEY=...  # optional; without it every claim returns UNVERIFIED
+./start_live.sh             # http://localhost:8000
+```
+
+`ffmpeg` must be on `PATH` for the live YouTube mode.
+
+### Three ways to run a session
+
+Chosen from the dropdown in the UI, or via `mode` in `POST /api/sessions`:
+
+| Mode | Audio + STT | Gemma | SerpApi | Use |
+|---|---|---|---|---|
+| `live` | real | real | real | Point it at a YouTube video or live stream |
+| `transcript` | bypassed | **real** | **real** | Replay `demo/sample_debate.json`; the agent's reasoning is fully live |
+| `cached` | bypassed | bypassed | bypassed | Replay a recorded run verbatim, fully offline |
+
+`transcript` mode exists because the live path chains four dependencies (yt-dlp, ffmpeg,
+Whisper, Ollama) and any of them can fail on venue wifi. It removes the fragile half
+while keeping the half that matters — Gemma and SerpApi still run for real.
+
+To rehearse the pitch, or to see the UI without a model or an API key:
+
+```bash
+python3 demo/rehearse.py    # Gemma + SerpApi stubbed, everything else real
+```
+
+Stub verdicts are prefixed `[REHEARSAL STUB]` in the UI so a rehearsal can never be
+mistaken for a real run.
+
+To record a real run as an offline fallback:
+
+```bash
+curl localhost:8000/api/sessions/<id>/recording > demo/cached_run.json
+```
+
+## Design decisions made under time pressure
+
+**Debounced claim spotting.** A local 9.6 GB Gemma takes seconds per call; Whisper emits
+segments every few seconds. Calling Gemma on every segment made the pipeline fall
+permanently behind the stream within a minute. Claim spotting now waits for
+`CLAIM_SCAN_MIN_CHARS` of *new* speech and is single-flight — while a pass is running,
+speech accumulates in the window instead of queueing more passes behind it.
+
+**Judging is deliberately not serialised.** Verdicts are independent, so they resolve
+concurrently and stream into the UI as each lands. A slow check never blocks the next
+claim from being spotted.
+
+**`keep_alive` on every call.** The original prototype measured ~31 s per call because
+each one reloaded the model. Keeping it resident is the difference between a demo and a
+slideshow.
+
+**Per-stage model selection.** `CLAIM_MODEL` and `JUDGE_MODEL` are separate env vars, so
+the continuously-running hot path can use a smaller Gemma than the once-per-claim judge.
+
+## Layout
+
+```
+cassandra_agent/
+  sources.py     three ways transcript enters the pipeline
+  ingest.py      YouTube -> PCM via yt-dlp + ffmpeg
+  transcribe.py  faster-whisper, on-device
+  claims.py      Gemma call ① — claim spotting
+  evidence.py    SerpApi retrieval
+  judge.py       Gemma call ② — verdict
+  pipeline.py    async orchestration, debouncing, recording
+  server.py      FastAPI + WebSocket
+static/index.html  live overlay UI
+demo/              sample transcript + rehearsal harness
+tests/             24 tests, external services mocked
+```
+
+`cassandra_v1.py`, `cassandra_demo.py` and `test_*.py` in the repository root are the
+earlier falsification-engine prototype this project grew out of, kept for reference.
+
+## Tests
+
+```bash
+python3 -m pytest tests/ -q
+```
+
+Ollama, ffmpeg and Whisper are not available in CI, so those boundaries are mocked;
+the tests cover the pipeline's control flow, debouncing, deduplication, window
+eviction, failure handling, and the replay sources.
+
+## Honest limitations
+
+- Verdicts are only as good as the top few SerpApi snippets — the agent reads search
+  results, not primary sources.
+- Whisper errors propagate: a misheard number becomes a misjudged claim.
+- Claim spotting is tuned to be eager; it prefers flagging a borderline claim over
+  missing one, so `UNVERIFIED` is common and expected.
+- The system reports what the evidence supports. It is a research aid, not an arbiter.

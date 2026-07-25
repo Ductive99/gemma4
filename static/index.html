@@ -57,6 +57,14 @@
     border-radius: 8px;
     font-size: 14px;
   }
+  .controls select {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
   .controls button {
     background: var(--accent);
     border: none;
@@ -161,6 +169,11 @@
 
 <div class="controls">
   <input id="url" type="text" placeholder="Paste a YouTube video or live stream URL…">
+  <select id="mode">
+    <option value="live">Live YouTube</option>
+    <option value="transcript" selected>Sample debate (Gemma + SerpApi live)</option>
+    <option value="cached">Cached replay (offline)</option>
+  </select>
   <button id="startBtn">Start listening</button>
   <button id="stopBtn" class="stop">Stop</button>
 </div>
@@ -251,18 +264,20 @@ function connectWebSocket(id) {
     if (ev.type === 'transcript') appendTranscript(ev);
     else if (ev.type === 'claim') addClaim(ev);
     else if (ev.type === 'verdict') applyVerdict(ev);
+    else if (ev.type === 'done') setStatus('finished');
     else if (ev.type === 'error') setStatus(`error: ${ev.message}`);
   };
 }
 
 startBtn.addEventListener('click', async () => {
   const youtube_url = urlInput.value.trim();
-  if (!youtube_url) return;
+  const mode = document.getElementById('mode').value;
+  if (mode === 'live' && !youtube_url) return;
   setStatus('starting…');
   const res = await fetch('/api/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ youtube_url }),
+    body: JSON.stringify({ youtube_url, mode }),
   });
   const data = await res.json();
   sessionId = data.session_id;

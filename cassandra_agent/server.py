@@ -19,12 +19,15 @@ app = FastAPI(title="Cassandra Live — Debate Fact Checker")
 
 
 class Session:
-    def __init__(self, session_id: str, youtube_url: str):
+    def __init__(self, session_id: str, youtube_url: str, mode: str = "live", source_path: str = ""):
         self.id = session_id
         self.youtube_url = youtube_url
+        self.mode = mode
         self.history: list[dict] = []
         self.websockets: set[WebSocket] = set()
-        self.pipeline = DebateFactCheckPipeline(youtube_url, emit=self.emit)
+        self.pipeline = DebateFactCheckPipeline(
+            youtube_url, emit=self.emit, mode=mode, source_path=source_path
+        )
         self.task: asyncio.Task | None = None
         self.error: str | None = None
 
@@ -53,17 +56,40 @@ class Session:
 SESSIONS: dict[str, Session] = {}
 
 
+DEMO_DIR = Path(__file__).resolve().parent.parent / "demo"
+
+
 class StartSessionRequest(BaseModel):
-    youtube_url: str
+    youtube_url: str = ""
+    # "live"       -> YouTube audio + Whisper + Gemma + SerpApi
+    # "transcript" -> replay a transcript file; Gemma + SerpApi still run live
+    # "cached"     -> replay a recorded run verbatim, fully offline
+    mode: str = "live"
+    source_path: str = ""
 
 
 @app.post("/api/sessions")
 async def start_session(req: StartSessionRequest) -> dict:
+    source_path = req.source_path
+    if req.mode == "transcript" and not source_path:
+        source_path = str(DEMO_DIR / "sample_debate.json")
+    if req.mode == "cached" and not source_path:
+        source_path = str(DEMO_DIR / "cached_run.json")
+
     session_id = uuid.uuid4().hex[:8]
-    session = Session(session_id, req.youtube_url)
+    session = Session(session_id, req.youtube_url, mode=req.mode, source_path=source_path)
     SESSIONS[session_id] = session
     await session.start()
-    return {"session_id": session_id}
+    return {"session_id": session_id, "mode": req.mode}
+
+
+@app.get("/api/sessions/{session_id}/recording")
+async def session_recording(session_id: str) -> dict:
+    """Exports a finished run as a cached event log, replayable offline."""
+    session = SESSIONS.get(session_id)
+    if session is None:
+        return {"error": "session not found"}
+    return {"events": session.pipeline.recorded}
 
 
 @app.post("/api/sessions/{session_id}/stop")

@@ -1,0 +1,22 @@
+{
+  "_note": "SYNTHETIC demo transcript. Speakers are fictional placeholders, not real people, and no real person said these words. The factual claims embedded in it are about genuine public matters so that live SerpApi retrieval and Gemma judging have real evidence to work against. Verdicts are produced live by the model, not scripted here.",
+  "title": "Sample debate — AI regulation and energy policy",
+  "segments": [
+    {"start": 0.0,  "end": 5.5,  "text": "Speaker A: Let's be honest about where regulation actually stands today."},
+    {"start": 5.5,  "end": 12.0, "text": "The EU AI Act entered into force in August 2024, so this is settled law, not a proposal."},
+    {"start": 12.0, "end": 18.5, "text": "And it bans facial recognition outright across the entire European Union."},
+    {"start": 18.5, "end": 24.0, "text": "Speaker B: That second part is where I think you're overstating the case considerably."},
+    {"start": 24.0, "end": 31.0, "text": "But set that aside. My concern is energy, because these systems are not free to run."},
+    {"start": 31.0, "end": 38.5, "text": "Data centres consumed roughly 1.5 percent of global electricity in 2024, and that share is climbing fast."},
+    {"start": 38.5, "end": 45.0, "text": "Speaker A: Climbing from a small base. And the grid is getting cleaner at the same time."},
+    {"start": 45.0, "end": 52.5, "text": "The International Energy Agency said back in 2020 that solar is now the cheapest electricity in history."},
+    {"start": 52.5, "end": 59.0, "text": "Speaker B: Cheapest to build, maybe. That is not the same thing as cheapest to deliver at three in the morning."},
+    {"start": 59.0, "end": 66.5, "text": "France generates more than seventy percent of its electricity from nuclear power, and that is what firm capacity looks like."},
+    {"start": 66.5, "end": 73.0, "text": "Speaker A: Nobody disputes the French number. I dispute what you conclude from it."},
+    {"start": 73.0, "end": 80.5, "text": "Speaker B: Then let's talk cost. Training a single frontier model now costs over a billion dollars a run."},
+    {"start": 80.5, "end": 87.0, "text": "That is a barrier to entry that no amount of open weights is going to fix."},
+    {"start": 87.0, "end": 94.5, "text": "Speaker A: That billion dollar figure is doing an enormous amount of work in your argument."},
+    {"start": 94.5, "end": 101.0, "text": "Meanwhile small open models run on a laptop, which is rather the point of this whole conversation."},
+    {"start": 101.0, "end": 108.5, "text": "Speaker B: On a laptop, badly. Speaker A: On a laptop, well enough to fact-check you in real time."}
+  ]
+}

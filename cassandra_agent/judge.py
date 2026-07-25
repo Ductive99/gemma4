@@ -39,12 +39,13 @@ def judge_claim(claim_text: str, snippets: list[Snippet], model: str = None) -> 
     user = f"CLAIM: {claim_text}\n\nEVIDENCE SNIPPETS:\n{_format_evidence(snippets)}"
 
     response = ollama.chat(
-        model=model or config.OLLAMA_MODEL,
+        model=model or config.JUDGE_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user},
         ],
         format="json",
+        keep_alive=config.OLLAMA_KEEP_ALIVE,
     )
 
     try:

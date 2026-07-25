@@ -33,12 +33,13 @@ def extract_claims(transcript_window: str, already_flagged: list[str], model: st
     user = f"Transcript window:\n{transcript_window}\n\nAlready flagged:\n{flagged_block}"
 
     response = ollama.chat(
-        model=model or config.OLLAMA_MODEL,
+        model=model or config.CLAIM_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user},
         ],
         format="json",
+        keep_alive=config.OLLAMA_KEEP_ALIVE,
     )
 
     try:
