@@ -161,3 +161,49 @@ async def test_transcript_window_is_speaker_labelled():
             TranscriptSegment(0.0, 5.0, LONG, speaker="Marc Devereux"), loop)
 
     assert mock_extract.call_args[0][0].startswith("Marc Devereux: ")
+
+
+@pytest.mark.asyncio
+async def test_prefetch_tags_events_with_video_reveal_times():
+    """Analysis runs ahead of playback; each event carries when it is due on screen."""
+    events, emit = _collector()
+    pipeline = DebateFactCheckPipeline("https://youtu.be/abc", emit=emit, mode="prefetch")
+    loop = asyncio.get_event_loop()
+
+    segments = [TranscriptSegment(0.0, 5.0, LONG, speaker="A"),
+                TranscriptSegment(5.0, 10.0, LONG, speaker="B")]
+    spotted = [{"claim": "A claim.", "speaker": "A", "search_query": "a query"}]
+
+    with patch("redpen.youtube.fetch_transcript", return_value=segments), \
+         patch("redpen.pipeline.extract_claims", side_effect=[spotted, []]), \
+         patch("redpen.pipeline.search_evidence", return_value=[]), \
+         patch("redpen.pipeline.judge_claim") as mock_judge:
+        mock_judge.return_value = Verdict(
+            claim_id="", claim_text="A claim.", label="TRUE",
+            confidence=0.9, explanation="ok", sources=[], speaker="A")
+        await pipeline._run_prefetch(loop)
+
+    kinds = [e["type"] for e in events]
+    assert "ready" in kinds
+    transcripts = [e for e in events if e["type"] == "transcript"]
+    assert [t["reveal_at"] for t in transcripts] == [0.0, 5.0]
+
+    claim = next(e for e in events if e["type"] == "claim")
+    verdict = next(e for e in events if e["type"] == "verdict")
+    assert claim["reveal_at"] == claim["timestamp"] + config.REVEAL_CLAIM_DELAY
+    assert verdict["reveal_at"] == claim["timestamp"] + config.REVEAL_VERDICT_DELAY
+    # the verdict is computed before it is due on screen — that is the whole point
+    assert verdict["reveal_at"] > claim["reveal_at"]
+
+
+@pytest.mark.asyncio
+async def test_prefetch_reports_a_usable_error_when_captions_are_missing():
+    events, emit = _collector()
+    pipeline = DebateFactCheckPipeline("https://youtu.be/abc", emit=emit, mode="prefetch")
+
+    with patch("redpen.youtube.fetch_transcript",
+               side_effect=RuntimeError("This video has no caption track available.")):
+        await pipeline._run_prefetch(asyncio.get_event_loop())
+
+    err = next(e for e in events if e["type"] == "error")
+    assert "caption track" in err["message"]

@@ -105,6 +105,16 @@ permanently behind the stream within a minute. Three fixes:
 - *Per-stage models.* `CLAIM_MODEL` and `JUDGE_MODEL` are separate, so the
   continuously-running hot path can use a smaller Gemma than the once-per-claim judge.
 
+**Working ahead of the playhead.** For a *recorded* video the transcript already
+exists, so we skip audio decoding and speech-to-text entirely and read YouTube's own
+caption track through yt-dlp. Analysis then runs far faster than playback, so we tag
+each result with the video timestamp it is due at and the browser holds it until the
+player's real playhead arrives — pausing, seeking and scrubbing all stay in sync,
+like a subtitle track. The analysis is entirely real; only the moment of display is
+scheduled. It is prefetching applied to inference, and it is the right architecture
+for VOD — though it is deliberately not a live-latency measurement, which is what
+`live` mode is for.
+
 **Designing the demo so it cannot die on stage.** The live path chains four
 dependencies — yt-dlp, ffmpeg, Whisper, Ollama — any of which can fail on venue
 wifi. So a session runs in one of three modes: `live`; `transcript`, which replays a
