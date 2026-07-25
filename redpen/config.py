@@ -19,7 +19,7 @@ SAMPLE_RATE = int(os.environ.get("SAMPLE_RATE", "16000"))
 AUDIO_CHUNK_SECONDS = float(os.environ.get("AUDIO_CHUNK_SECONDS", "5"))
 TRANSCRIPT_WINDOW_SECONDS = float(os.environ.get("TRANSCRIPT_WINDOW_SECONDS", "25"))
 MAX_FLAGGED_CLAIMS_MEMORY = int(os.environ.get("MAX_FLAGGED_CLAIMS_MEMORY", "50"))
-EVIDENCE_RESULTS = int(os.environ.get("EVIDENCE_RESULTS", "5"))
+EVIDENCE_RESULTS = int(os.environ.get("EVIDENCE_RESULTS", "8"))
 
 # Don't wake Gemma for every Whisper segment — wait until enough *new* speech
 # has accumulated to be worth a claim-spotting pass.

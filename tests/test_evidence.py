@@ -46,3 +46,17 @@ def test_search_evidence_captures_publication_dates():
         results = evidence.search_evidence("q", api_key="k", num_results=3)
 
     assert [r.date for r in results] == ["Aug 1, 2024", "Mar 3, 2021", ""]
+
+
+def test_gather_evidence_retries_with_the_claim_when_the_query_finds_nothing():
+    with patch.object(evidence, "search_evidence", side_effect=[[], ["hit"]]) as mock:
+        out = evidence.gather_evidence("a very narrow query", "the raw claim text", "k")
+    assert out == ["hit"]
+    assert mock.call_count == 2
+    assert mock.call_args_list[1][0][0] == "the raw claim text"
+
+
+def test_gather_evidence_does_not_retry_when_the_query_worked():
+    with patch.object(evidence, "search_evidence", side_effect=[["hit"]]) as mock:
+        evidence.gather_evidence("q", "claim", "k")
+    assert mock.call_count == 1

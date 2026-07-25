@@ -40,3 +40,17 @@ def search_evidence(query: str, api_key: str = None, num_results: int = None) ->
                                       .get("date", "")) or "",
         ))
     return snippets
+
+
+def gather_evidence(query: str, claim_text: str = "", api_key: str = None,
+                    num_results: int = None) -> list[Snippet]:
+    """Searches Gemma's query, falling back to the claim itself if it finds nothing.
+
+    A crafted query can be too narrow — a name plus a bill title with no matching
+    page. Retrying on the raw claim usually still finds the topic, and an
+    imperfect result beats no evidence, which forces UNVERIFIED.
+    """
+    snippets = search_evidence(query, api_key, num_results)
+    if not snippets and claim_text and claim_text.strip() != (query or "").strip():
+        snippets = search_evidence(claim_text, api_key, num_results)
+    return snippets
