@@ -344,16 +344,8 @@
 <div class="controls">
   <div class="field grow">
     <label for="url">Video source</label>
-    <input id="url" type="text" placeholder="Paste a YouTube video or live stream URL…">
-  </div>
-  <div class="field">
-    <label for="mode">Mode</label>
-    <select id="mode">
-      <option value="prefetch" selected>YouTube — analysed ahead, synced to video</option>
-      <option value="transcript">Sample debate — Gemma + SerpApi live</option>
-      <option value="live">Live stream — real-time</option>
-      <option value="cached">Cached replay — offline</option>
-    </select>
+    <input id="url" type="text"
+           placeholder="Paste a YouTube URL — or leave empty to run the sample debate">
   </div>
   <button class="btn btn-primary" id="startBtn">Start listening</button>
   <button class="btn btn-ghost" id="stopBtn" disabled>Stop</button>
@@ -418,7 +410,7 @@ let ws = null, sessionId = null, timer = null, startedAt = null;
    carrying a `reveal_at` video timestamp. They wait here until the player's
    actual playhead reaches them — so pausing, seeking and scrubbing all keep
    the overlay in sync, exactly like a subtitle track. */
-let scheduled = [], player = null, playheadTimer = null, prefetching = false;
+let scheduled = [], player = null, playheadTimer = null;
 let nClaims = 0, nChecked = 0;
 const tally = { TRUE: 0, FALSE: 0, MISLEADING: 0, UNVERIFIED: 0 };
 const cards = {};
@@ -677,16 +669,7 @@ function connect(id) {
   ws.onmessage = (m) => {
     const ev = JSON.parse(m.data);
     if (ev.type === 'context') { onContext(ev); return; }
-    if (ev.type === 'progress') {
-      setStatus(`Analysing ${Math.round((ev.done / Math.max(ev.total, 1)) * 100)}%`);
-      return;
-    }
-    if (ev.type === 'ready') {
-      prefetching = false;
-      setStatus('Synced to video');
-      attachPlayer();
-      return;
-    }
+    if (ev.type === 'progress' || ev.type === 'ready') return;
     if (ev.type === 'done') { setStatus('Finished'); setRunning(false); $('vlabel').textContent = 'FINISHED'; return; }
     if (ev.type === 'error') { setStatus(ev.message ? 'Error' : 'Error'); setRunning(false); console.warn(ev.message); return; }
 
@@ -697,19 +680,17 @@ function connect(id) {
 }
 
 $('startBtn').addEventListener('click', async () => {
+  // A URL runs that video; no URL runs the built-in sample debate.
   const youtube_url = $('url').value.trim();
-  const mode = $('mode').value;
-  if ((mode === 'live' || mode === 'prefetch') && !youtube_url) {
-    setStatus('URL required'); $('url').focus(); return;
-  }
+  const mode = youtube_url ? 'prefetch' : 'transcript';
 
   scheduled = []; player = null; clearInterval(playheadTimer);
-  prefetching = mode === 'prefetch';
-  // In prefetch mode the video waits until analysis is ready, then the player
-  // API starts it and drives the overlay off its real playhead.
-  if (youtube_url) mountVideo(youtube_url, { autoplay: !prefetching });
+  // Playback starts straight away and the analysis races ahead of the playhead,
+  // so there is no wait before the video rolls. Anything that somehow isn't
+  // ready by the time it is due simply renders on arrival.
+  if (youtube_url) { mountVideo(youtube_url, { autoplay: true }); attachPlayer(); }
 
-  setStatus(prefetching ? 'Analysing…' : 'Starting…');
+  setStatus('Starting…');
   try {
     const res = await fetch('/api/sessions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },

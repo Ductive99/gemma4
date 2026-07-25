@@ -47,11 +47,28 @@ TOPICS = [
 ]
 
 
+_generic = {"n": 0}
+
+
 def fake_extract(window, flagged, model=None, context_block=""):
-    """Spots one claim per topic, the first time that topic appears."""
+    """Spots one claim per topic, the first time that topic appears.
+
+    Falls back to a generic stub every few windows so the timing and visuals can
+    be rehearsed against any real video, not just the sample debate. Clearly
+    labelled in the UI so a rehearsal can never be mistaken for a real run.
+    """
     for cue, claim, speaker, query in TOPICS:
         if cue.lower() in window.lower() and claim not in flagged:
             return [{"claim": claim, "speaker": speaker, "search_query": query}]
+
+    _generic["n"] += 1
+    if _generic["n"] % 4 == 0:
+        excerpt = " ".join(window.split()[-14:])
+        return [{
+            "claim": f"[REHEARSAL STUB] Claim placeholder from: “{excerpt}”",
+            "speaker": "",
+            "search_query": "[rehearsal stub] no search performed",
+        }]
     return []
 
 
