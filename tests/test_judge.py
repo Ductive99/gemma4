@@ -62,3 +62,22 @@ def test_judge_receives_speaker_and_context_and_echoes_speaker():
     assert "Marc Devereux" in sent
     assert "Video title: A debate" in sent
     assert verdict.speaker == "Marc Devereux"
+
+
+def test_evidence_dates_and_todays_date_reach_the_model():
+    """Undated evidence is how a correct claim gets rated false against another year."""
+    from datetime import date
+    snippets = [
+        Snippet("Bureau of Labor Statistics", "Unemployment was 3.5%.",
+                "https://bls.gov/a", "bls.gov", date="Jun 5, 2019"),
+        Snippet("News roundup", "Unemployment now 4.1%.", "https://x.com/b", "x.com"),
+    ]
+    with patch.object(judge, "ollama") as mock_ollama:
+        mock_ollama.chat.return_value = _fake_chat(
+            {"label": "TRUE", "confidence": 0.8, "explanation": "ok", "sources": [0]})
+        judge.judge_claim("Unemployment was 3.5%.", snippets)
+
+    sent = mock_ollama.chat.call_args.kwargs["messages"][1]["content"]
+    assert "[published Jun 5, 2019]" in sent      # dated evidence is labelled
+    assert "[date unknown]" in sent               # undated evidence is flagged as such
+    assert date.today().isoformat() in sent       # and the model isn't left guessing "now"

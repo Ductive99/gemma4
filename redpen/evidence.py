@@ -34,5 +34,9 @@ def search_evidence(query: str, api_key: str = None, num_results: int = None) ->
             text=item.get("snippet", ""),
             link=item.get("link", ""),
             source=item.get("source") or item.get("displayed_link", ""),
+            date=item.get("date") or (item.get("rich_snippet", {})
+                                      .get("top", {})
+                                      .get("detected_extensions", {})
+                                      .get("date", "")) or "",
         ))
     return snippets
