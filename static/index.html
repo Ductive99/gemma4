@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cassandra Live — Debate Fact Checker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #12151d;
+    --border: #232838;
+    --text: #e7e9ee;
+    --muted: #8a90a2;
+    --accent: #6ea8fe;
+    --true: #33c07e;
+    --false: #e5534b;
+    --misleading: #e5a83a;
+    --unverified: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 {
+    font-size: 16px;
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  header .status {
+    margin-left: auto;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .controls {
+    display: flex;
+    gap: 20px;
+    padding: 16px 20px;
+  }
+  .controls input[type=text] {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .controls button {
+    background: var(--accent);
+    border: none;
+    color: #0b0d12;
+    font-weight: 600;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .controls button.stop {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  main {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 16px;
+    padding: 0 20px 20px;
+    height: calc(100vh - 130px);
+  }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; height: auto; }
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow-y: auto;
+    padding: 14px 16px;
+  }
+  .panel h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  #transcript p {
+    margin: 0 0 8px;
+    line-height: 1.5;
+    color: #cfd3dc;
+    font-size: 14px;
+  }
+  #transcript .ts {
+    color: var(--muted);
+    font-size: 11px;
+    margin-right: 8px;
+  }
+  .claim-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: #0e1119;
+  }
+  .claim-card .claim-text {
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    color: #0b0d12;
+  }
+  .badge.pending { background: var(--muted); color: #0b0d12; }
+  .badge.TRUE { background: var(--true); }
+  .badge.FALSE { background: var(--false); }
+  .badge.MISLEADING { background: var(--misleading); }
+  .badge.UNVERIFIED { background: var(--unverified); }
+  .explanation {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+  .sources {
+    margin-top: 6px;
+    font-size: 12px;
+  }
+  .sources a {
+    color: var(--accent);
+    margin-right: 8px;
+    text-decoration: none;
+  }
+  .empty-hint {
+    color: var(--muted);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cassandra Live — Debate Fact Checker</h1>
+  <div class="status" id="status">idle</div>
+</header>
+
+<div class="controls">
+  <input id="url" type="text" placeholder="Paste a YouTube video or live stream URL…">
+  <button id="startBtn">Start listening</button>
+  <button id="stopBtn" class="stop">Stop</button>
+</div>
+
+<main>
+  <section class="panel" id="transcriptPanel">
+    <h2>Live transcript</h2>
+    <div id="transcript"><p class="empty-hint">Transcript will appear here once a session starts.</p></div>
+  </section>
+  <section class="panel" id="claimsPanel">
+    <h2>Claims &amp; verdicts</h2>
+    <div id="claims"><p class="empty-hint">Detected claims and their fact-check verdicts will appear here.</p></div>
+  </section>
+</main>
+
+<script>
+const statusEl = document.getElementById('status');
+const transcriptEl = document.getElementById('transcript');
+const claimsEl = document.getElementById('claims');
+const urlInput = document.getElementById('url');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+
+let ws = null;
+let sessionId = null;
+const claimCards = {};
+
+function setStatus(text) {
+  statusEl.textContent = text;
+}
+
+function clearHint(container) {
+  const hint = container.querySelector('.empty-hint');
+  if (hint) hint.remove();
+}
+
+function appendTranscript(ev) {
+  clearHint(transcriptEl);
+  const p = document.createElement('p');
+  const mins = Math.floor(ev.start / 60);
+  const secs = Math.floor(ev.start % 60).toString().padStart(2, '0');
+  p.innerHTML = `<span class="ts">${mins}:${secs}</span>${escapeHtml(ev.text)}`;
+  transcriptEl.appendChild(p);
+  transcriptEl.parentElement.scrollTop = transcriptEl.parentElement.scrollHeight;
+}
+
+function addClaim(ev) {
+  clearHint(claimsEl);
+  const card = document.createElement('div');
+  card.className = 'claim-card';
+  card.innerHTML = `
+    <div class="claim-text">${escapeHtml(ev.text)}</div>
+    <span class="badge pending">CHECKING…</span>
+    <div class="explanation" data-role="explanation"></div>
+    <div class="sources" data-role="sources"></div>
+  `;
+  claimsEl.prepend(card);
+  claimCards[ev.id] = card;
+}
+
+function applyVerdict(ev) {
+  const card = claimCards[ev.claim_id];
+  if (!card) return;
+  const badge = card.querySelector('.badge');
+  badge.textContent = `${ev.label} (${Math.round(ev.confidence * 100)}%)`;
+  badge.className = `badge ${ev.label}`;
+  card.querySelector('[data-role=explanation]').textContent = ev.explanation || '';
+  const sourcesEl = card.querySelector('[data-role=sources]');
+  sourcesEl.innerHTML = (ev.sources || [])
+    .map((link, i) => `<a href="${link}" target="_blank" rel="noopener">source ${i + 1}</a>`)
+    .join('');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function connectWebSocket(id) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/${id}`);
+  ws.onopen = () => setStatus('listening…');
+  ws.onclose = () => setStatus('disconnected');
+  ws.onerror = () => setStatus('connection error');
+  ws.onmessage = (msg) => {
+    const ev = JSON.parse(msg.data);
+    if (ev.type === 'transcript') appendTranscript(ev);
+    else if (ev.type === 'claim') addClaim(ev);
+    else if (ev.type === 'verdict') applyVerdict(ev);
+    else if (ev.type === 'error') setStatus(`error: ${ev.message}`);
+  };
+}
+
+startBtn.addEventListener('click', async () => {
+  const youtube_url = urlInput.value.trim();
+  if (!youtube_url) return;
+  setStatus('starting…');
+  const res = await fetch('/api/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ youtube_url }),
+  });
+  const data = await res.json();
+  sessionId = data.session_id;
+  connectWebSocket(sessionId);
+});
+
+stopBtn.addEventListener('click', async () => {
+  if (!sessionId) return;
+  await fetch(`/api/sessions/${sessionId}/stop`, { method: 'POST' });
+  setStatus('stopped');
+  if (ws) ws.close();
+});
+</script>
+</body>
+</html>
