@@ -49,7 +49,10 @@ def transcript_segments(path, stop_event, speed: float = None, realtime: bool = 
             start=float(raw["start"]), end=float(raw["end"]), text=raw["text"].strip()
         )
         if realtime:
-            due = segment.end / speed
+            # Release at the segment's START so captions appear as the words are
+            # spoken and the client can reveal them across the segment's duration.
+            # Releasing at .end would always put captions behind the audio.
+            due = segment.start / speed
             delay = due - (time.monotonic() - started)
             if delay > 0:
                 # sleep in slices so a stop request is honoured promptly
