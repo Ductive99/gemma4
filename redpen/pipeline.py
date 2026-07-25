@@ -76,6 +76,9 @@ class DebateFactCheckPipeline:
         if self.mode == "cached":
             await self._run_cached()
             return
+        if self.mode == "prefetch":
+            await self._run_prefetch(asyncio.get_event_loop())
+            return
 
         loop = asyncio.get_event_loop()
         queue: "asyncio.Queue[TranscriptSegment | None]" = asyncio.Queue()
@@ -113,6 +116,87 @@ class DebateFactCheckPipeline:
                 # let in-flight fact-checks finish so their verdicts still land
                 await asyncio.gather(*pending, return_exceptions=True)
             await self._emit({"type": "done"})
+
+    async def _run_prefetch(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Analyses a recorded video's caption track ahead of playback.
+
+        Every emitted event carries `reveal_at` — the video timestamp at which
+        the browser should surface it. The analysis is real (Gemma spots the
+        claims, SerpApi retrieves the evidence, Gemma judges); only the moment
+        of display is scheduled, so results are synchronised to the video the
+        way subtitles are rather than racing playback.
+        """
+        from .youtube import fetch_transcript
+
+        await self._load_context(loop)
+
+        try:
+            segments = await loop.run_in_executor(None, fetch_transcript, self.youtube_url)
+        except Exception as exc:  # noqa: BLE001 - surface a usable message to the UI
+            await self._emit({"type": "error", "message": str(exc)})
+            return
+
+        for segment in segments:
+            await self._emit({**segment.to_event(), "reveal_at": segment.start})
+
+        total = len(segments)
+        window: list[TranscriptSegment] = []
+        unscanned = 0
+        done = 0
+
+        for segment in segments:
+            if self._stop_event.is_set():
+                break
+            window.append(segment)
+            cutoff = segment.end - config.TRANSCRIPT_WINDOW_SECONDS
+            window = [s for s in window if s.end >= cutoff]
+            unscanned += len(segment.text)
+            done += 1
+
+            if unscanned < config.CLAIM_SCAN_MIN_CHARS:
+                continue
+            unscanned = 0
+
+            window_text = "\n".join(s.labelled() for s in window)
+            recent = self._flagged_claims[-config.MAX_FLAGGED_CLAIMS_MEMORY:]
+            spotted = await loop.run_in_executor(
+                None, extract_claims, window_text, recent,
+                self.claim_model, self.context.to_prompt_block(),
+            )
+            await self._emit({"type": "progress", "done": done, "total": total})
+
+            for entry in spotted:
+                claim_text = entry["claim"]
+                if claim_text in self._flagged_claims:
+                    continue
+                self._flagged_claims.append(claim_text)
+                claim = Claim(
+                    id=uuid.uuid4().hex,
+                    text=claim_text,
+                    context=window_text,
+                    timestamp=segment.start,
+                    speaker=entry.get("speaker", "") or segment.speaker,
+                    search_query=entry.get("search_query", "") or claim_text,
+                )
+                await self._emit({
+                    **claim.to_event(),
+                    "reveal_at": claim.timestamp + config.REVEAL_CLAIM_DELAY,
+                })
+
+                snippets = await loop.run_in_executor(
+                    None, search_evidence, claim.search_query, self.serpapi_key
+                )
+                verdict = await loop.run_in_executor(
+                    None, judge_claim, claim.text, snippets, self.judge_model,
+                    claim.speaker, self.context.to_prompt_block(),
+                )
+                verdict.claim_id = claim.id
+                await self._emit({
+                    **verdict.to_event(),
+                    "reveal_at": claim.timestamp + config.REVEAL_VERDICT_DELAY,
+                })
+
+        await self._emit({"type": "ready", "claims": len(self._flagged_claims)})
 
     async def _load_context(self, loop: asyncio.AbstractEventLoop) -> None:
         try:

@@ -61,7 +61,9 @@ DEMO_DIR = Path(__file__).resolve().parent.parent / "demo"
 
 class StartSessionRequest(BaseModel):
     youtube_url: str = ""
-    # "live"       -> YouTube audio + Whisper + Gemma + SerpApi
+    # "prefetch"   -> YouTube captions analysed ahead of playback, results
+    #                 released against the video's real playhead
+    # "live"       -> YouTube audio + Whisper + Gemma + SerpApi, in real time
     # "transcript" -> replay a transcript file; Gemma + SerpApi still run live
     # "cached"     -> replay a recorded run verbatim, fully offline
     mode: str = "live"

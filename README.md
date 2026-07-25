@@ -111,9 +111,30 @@ Chosen from the dropdown in the UI, or via `mode` in `POST /api/sessions`:
 
 | Mode | Audio + STT | Gemma | SerpApi | Use |
 |---|---|---|---|---|
-| `live` | real | real | real | Point it at a YouTube video or live stream |
+| `prefetch` | captions, no STT | **real** | **real** | A recorded YouTube video, analysed ahead of playback and synced to it |
+| `live` | real | real | real | A live stream, checked in real time |
 | `transcript` | bypassed | **real** | **real** | Replay `demo/sample_debate.json`; the agent's reasoning is fully live |
 | `cached` | bypassed | bypassed | bypassed | Replay a recorded run verbatim, fully offline |
+
+#### `prefetch` — working ahead of the playhead
+
+A recorded video's transcript already exists, so there is no reason to decode audio
+and run speech-to-text: yt-dlp hands us YouTube's own caption track directly. That
+drops ffmpeg and Whisper from the path and makes analysis run far faster than
+playback, so the agent finishes the whole video before the viewer is a minute into
+it.
+
+Each result is then tagged with the video timestamp it is due at — a claim card at
+`REVEAL_CLAIM_DELAY` after the claim is spoken, its verdict at
+`REVEAL_VERDICT_DELAY` — and the browser holds it until the player's *real*
+playhead reaches that point. Pausing, seeking and scrubbing all keep the overlay in
+sync, exactly like a subtitle track.
+
+**Be straight about what this is.** The analysis is entirely real: Gemma spots the
+claims, SerpApi retrieves the evidence, Gemma judges it. Only the moment of display
+is scheduled. It is prefetching applied to inference, and it is the right
+architecture for recorded video — but it is *not* a measurement of live latency, and
+shouldn't be presented as one. `live` mode is the real-time path.
 
 `transcript` mode exists because the live path chains four dependencies (yt-dlp, ffmpeg,
 Whisper, Ollama) and any of them can fail on venue wifi. It removes the fragile half

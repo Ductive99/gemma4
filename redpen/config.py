@@ -25,3 +25,11 @@ EVIDENCE_RESULTS = int(os.environ.get("EVIDENCE_RESULTS", "5"))
 # has accumulated to be worth a claim-spotting pass.
 CLAIM_SCAN_MIN_CHARS = int(os.environ.get("CLAIM_SCAN_MIN_CHARS", "180"))
 REPLAY_SPEED = float(os.environ.get("REPLAY_SPEED", "1.0"))
+
+# Prefetch mode. A recorded video's transcript exists upfront, so the agent can
+# analyse it far faster than playback and hold each result until the playhead
+# reaches it — the same idea as prefetching, applied to inference. These are the
+# offsets, in video seconds, from when a claim is spoken to when its card and
+# then its verdict are surfaced.
+REVEAL_CLAIM_DELAY = float(os.environ.get("REVEAL_CLAIM_DELAY", "2.0"))
+REVEAL_VERDICT_DELAY = float(os.environ.get("REVEAL_VERDICT_DELAY", "7.0"))

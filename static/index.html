@@ -349,8 +349,9 @@
   <div class="field">
     <label for="mode">Mode</label>
     <select id="mode">
-      <option value="transcript" selected>Sample debate — Gemma + SerpApi live</option>
-      <option value="live">Live YouTube</option>
+      <option value="prefetch" selected>YouTube — analysed ahead, synced to video</option>
+      <option value="transcript">Sample debate — Gemma + SerpApi live</option>
+      <option value="live">Live stream — real-time</option>
       <option value="cached">Cached replay — offline</option>
     </select>
   </div>
@@ -413,6 +414,11 @@ const stage = $('stage'), overlay = $('overlay'), history_ = $('history'), trans
 const capLine = $('capLine'), capPrev = $('capPrev'), capSpeaker = $('capSpeaker');
 
 let ws = null, sessionId = null, timer = null, startedAt = null;
+/* Prefetch mode: analysis finishes ahead of playback, so events arrive early
+   carrying a `reveal_at` video timestamp. They wait here until the player's
+   actual playhead reaches them — so pausing, seeking and scrubbing all keep
+   the overlay in sync, exactly like a subtitle track. */
+let scheduled = [], player = null, playheadTimer = null, prefetching = false;
 let nClaims = 0, nChecked = 0;
 const tally = { TRUE: 0, FALSE: 0, MISLEADING: 0, UNVERIFIED: 0 };
 const cards = {};
@@ -454,18 +460,80 @@ function youtubeId(url) {
   return m ? m[1] : null;
 }
 
-function mountVideo(url) {
+function mountVideo(url, { autoplay = true } = {}) {
   const id = youtubeId(url);
   if (!id) return false;
   stage.querySelectorAll('iframe').forEach(f => f.remove());
   const f = document.createElement('iframe');
-  f.src = `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&modestbranding=1`;
+  f.id = 'ytframe';
+  f.src = `https://www.youtube.com/embed/${id}?enablejsapi=1&rel=0&modestbranding=1`
+        + (autoplay ? '&autoplay=1' : '');
   f.allow = 'autoplay; encrypted-media; picture-in-picture';
   f.allowFullscreen = true;
   f.title = 'Debate video';
   stage.insertBefore(f, stage.firstChild);
   $('visualiser').classList.remove('on');
   return true;
+}
+
+/* ---------- playhead-synced release (prefetch mode) ---------- */
+function loadPlayerApi() {
+  return new Promise((resolve) => {
+    if (window.YT && window.YT.Player) return resolve(true);
+    const s = document.createElement('script');
+    s.src = 'https://www.youtube.com/iframe_api';
+    s.onerror = () => resolve(false);
+    window.onYouTubeIframeAPIReady = () => resolve(true);
+    document.head.appendChild(s);
+    setTimeout(() => resolve(!!(window.YT && window.YT.Player)), 6000);
+  });
+}
+
+async function attachPlayer() {
+  const ok = await loadPlayerApi();
+  if (!ok) { startFallbackClock(); return; }
+  try {
+    player = new YT.Player('ytframe', { events: { onReady: (e) => e.target.playVideo() } });
+  } catch (_) { startFallbackClock(); return; }
+  startPlayheadLoop();
+}
+
+function currentVideoTime() {
+  if (player && typeof player.getCurrentTime === 'function') {
+    try { return player.getCurrentTime(); } catch (_) {}
+  }
+  return null;
+}
+
+function startPlayheadLoop() {
+  clearInterval(playheadTimer);
+  playheadTimer = setInterval(() => {
+    const t = currentVideoTime();
+    if (t == null) return;
+    flushScheduled(t);
+  }, 250);
+}
+
+/* If the IFrame API can't load (offline, blocked), fall back to a wall clock so
+   the demo still runs — it just can't follow pauses or seeks. */
+function startFallbackClock() {
+  const t0 = Date.now();
+  clearInterval(playheadTimer);
+  playheadTimer = setInterval(() => flushScheduled((Date.now() - t0) / 1000), 250);
+}
+
+function flushScheduled(videoTime) {
+  if (!scheduled.length) return;
+  const due = scheduled.filter((e) => e.reveal_at <= videoTime);
+  if (!due.length) return;
+  scheduled = scheduled.filter((e) => e.reveal_at > videoTime);
+  due.sort((a, b) => a.reveal_at - b.reveal_at).forEach(render);
+}
+
+function render(ev) {
+  if (ev.type === 'transcript') onTranscript(ev);
+  else if (ev.type === 'claim') onClaim(ev);
+  else if (ev.type === 'verdict') onVerdict(ev);
 }
 
 /* ---------- captions ---------- */
@@ -608,22 +676,40 @@ function connect(id) {
   ws.onerror = () => setStatus('Connection error');
   ws.onmessage = (m) => {
     const ev = JSON.parse(m.data);
-    if (ev.type === 'context') onContext(ev);
-    else if (ev.type === 'transcript') onTranscript(ev);
-    else if (ev.type === 'claim') onClaim(ev);
-    else if (ev.type === 'verdict') onVerdict(ev);
-    else if (ev.type === 'done') { setStatus('Finished'); setRunning(false); $('vlabel').textContent = 'FINISHED'; }
-    else if (ev.type === 'error') { setStatus('Error'); setRunning(false); }
+    if (ev.type === 'context') { onContext(ev); return; }
+    if (ev.type === 'progress') {
+      setStatus(`Analysing ${Math.round((ev.done / Math.max(ev.total, 1)) * 100)}%`);
+      return;
+    }
+    if (ev.type === 'ready') {
+      prefetching = false;
+      setStatus('Synced to video');
+      attachPlayer();
+      return;
+    }
+    if (ev.type === 'done') { setStatus('Finished'); setRunning(false); $('vlabel').textContent = 'FINISHED'; return; }
+    if (ev.type === 'error') { setStatus(ev.message ? 'Error' : 'Error'); setRunning(false); console.warn(ev.message); return; }
+
+    // Prefetched results wait for the playhead; live results render immediately.
+    if (typeof ev.reveal_at === 'number') scheduled.push(ev);
+    else render(ev);
   };
 }
 
 $('startBtn').addEventListener('click', async () => {
   const youtube_url = $('url').value.trim();
   const mode = $('mode').value;
-  if (mode === 'live' && !youtube_url) { setStatus('URL required'); $('url').focus(); return; }
-  if (youtube_url) mountVideo(youtube_url);
+  if ((mode === 'live' || mode === 'prefetch') && !youtube_url) {
+    setStatus('URL required'); $('url').focus(); return;
+  }
 
-  setStatus('Starting…');
+  scheduled = []; player = null; clearInterval(playheadTimer);
+  prefetching = mode === 'prefetch';
+  // In prefetch mode the video waits until analysis is ready, then the player
+  // API starts it and drives the overlay off its real playhead.
+  if (youtube_url) mountVideo(youtube_url, { autoplay: !prefetching });
+
+  setStatus(prefetching ? 'Analysing…' : 'Starting…');
   try {
     const res = await fetch('/api/sessions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
