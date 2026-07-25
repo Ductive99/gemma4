@@ -7,6 +7,7 @@ claim was produced.
 """
 
 import json
+from datetime import date
 
 import ollama
 
@@ -24,6 +25,19 @@ person — evidence concerning someone else does not support a claim about this
 speaker's record. Knowing who spoke must NOT change how favourably you judge them;
 weigh both sides of a debate by exactly the same standard.
 
+TIME MATTERS. You are given today's date, when the debate took place, and the
+publication date of each piece of evidence. Most debate claims are only true or
+false *as of a particular moment* — statistics, records, rankings and "the highest
+since…" comparisons all move. Before judging:
+- read the claim as of the debate date, not as of today;
+- check whether each piece of evidence actually covers that period. Evidence from a
+  different year may be perfectly accurate and still say nothing about this claim;
+- if the claim was true when spoken but has since changed, it is TRUE, not FALSE —
+  say so in the explanation;
+- if the only evidence you have is from the wrong period, or is undated and the
+  claim is time-sensitive, that is UNVERIFIED. Do not guess across a date gap.
+Do not rely on your own sense of the current date; use the dates given.
+
 Respond ONLY with valid JSON with EXACTLY these fields:
 - "label": one of "TRUE", "FALSE", "MISLEADING", "UNVERIFIED".
   Use "UNVERIFIED" if the evidence doesn't clearly confirm or contradict the claim,
@@ -36,7 +50,12 @@ Respond ONLY with valid JSON with EXACTLY these fields:
 def _format_evidence(snippets: list[Snippet]) -> str:
     if not snippets:
         return "(no evidence found)"
-    return "\n".join(f"[{i}] {s.title}: {s.text} ({s.link})" for i, s in enumerate(snippets))
+    return "\n".join(
+        f"[{i}] {s.title}"
+        f"{f' [published {s.date}]' if s.date else ' [date unknown]'}"
+        f": {s.text} ({s.link})"
+        for i, s in enumerate(snippets)
+    )
 
 
 def judge_claim(
@@ -47,6 +66,7 @@ def judge_claim(
     context_block: str = "",
 ) -> Verdict:
     user = (
+        f"TODAY'S DATE: {date.today().isoformat()}\n\n"
         f"CONTEXT:\n{context_block or '(no context available)'}\n\n"
         f"SPEAKER: {speaker or '(unattributed)'}\n"
         f"CLAIM: {claim_text}\n\n"

@@ -90,6 +90,10 @@ class Snippet:
     text: str
     link: str
     source: str
+    # When the source published this. Debate claims are overwhelmingly
+    # time-sensitive, so undated evidence is how a correct claim gets rated
+    # false against numbers from a different year.
+    date: str = ""
 
 
 @dataclass

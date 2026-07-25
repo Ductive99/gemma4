@@ -32,3 +32,17 @@ def test_search_evidence_without_query_returns_empty():
         results = evidence.search_evidence("   ", api_key="key")
     mock_get.assert_not_called()
     assert results == []
+
+
+def test_search_evidence_captures_publication_dates():
+    fake_response = MagicMock()
+    fake_response.json.return_value = {"organic_results": [
+        {"title": "A", "snippet": "s", "link": "https://a.com", "date": "Aug 1, 2024"},
+        {"title": "B", "snippet": "s", "link": "https://b.com",
+         "rich_snippet": {"top": {"detected_extensions": {"date": "Mar 3, 2021"}}}},
+        {"title": "C", "snippet": "s", "link": "https://c.com"},
+    ]}
+    with patch.object(evidence.requests, "get", return_value=fake_response):
+        results = evidence.search_evidence("q", api_key="k", num_results=3)
+
+    assert [r.date for r in results] == ["Aug 1, 2024", "Mar 3, 2021", ""]
