@@ -631,6 +631,10 @@ function onVerdict(ev) {
     badge.className = `badge ${ev.label}`;
     badge.textContent = `${ev.label} · ${pct}%`;
     el.querySelector('[data-role=explain]').textContent = ev.explanation || '';
+    if (ev.label === 'UNVERIFIED' && ev.evidence_count === 0) {
+      el.querySelector('[data-role=explain]').textContent =
+        ev.explanation || 'No evidence was retrieved for this claim.';
+    }
     const conf = el.querySelector('[data-role=conf]');
     conf.classList.add(ev.label);
     requestAnimationFrame(() => { conf.querySelector('i').style.width = pct + '%'; });
@@ -670,6 +674,7 @@ function connect(id) {
     const ev = JSON.parse(m.data);
     if (ev.type === 'context') { onContext(ev); return; }
     if (ev.type === 'progress' || ev.type === 'ready') return;
+    if (ev.type === 'warning') { setStatus('No SerpApi key'); console.warn(ev.message); return; }
     if (ev.type === 'done') { setStatus('Finished'); setRunning(false); $('vlabel').textContent = 'FINISHED'; return; }
     if (ev.type === 'error') { setStatus(ev.message ? 'Error' : 'Error'); setRunning(false); console.warn(ev.message); return; }
 

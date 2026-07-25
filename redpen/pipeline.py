@@ -29,7 +29,7 @@ from typing import Awaitable, Callable
 from . import config, sources
 from .fetch import _keywords, _WORD
 from .claims import extract_claims
-from .evidence import search_evidence
+from .evidence import gather_evidence
 from .fetch import enrich
 from .events import Claim, SessionContext, TranscriptSegment
 from .judge import judge_claim
@@ -205,7 +205,7 @@ class DebateFactCheckPipeline:
                 })
 
                 snippets = await loop.run_in_executor(
-                    None, search_evidence, claim.search_query, self.serpapi_key
+                    None, gather_evidence, claim.search_query, claim.text, self.serpapi_key
                 )
                 snippets = await loop.run_in_executor(None, enrich, snippets, claim.text)
                 verdict = await loop.run_in_executor(
@@ -215,6 +215,7 @@ class DebateFactCheckPipeline:
                 verdict.claim_id = claim.id
                 await self._emit({
                     **verdict.to_event(),
+                    "evidence_count": len(snippets),
                     "reveal_at": claim.timestamp + config.REVEAL_VERDICT_DELAY,
                 })
 
@@ -233,6 +234,14 @@ class DebateFactCheckPipeline:
         except Exception:  # noqa: BLE001 - run without context rather than not at all
             self.context = SessionContext()
         await self._emit(self.context.to_event())
+        if not self.serpapi_key:
+            # Without a key every search returns nothing and the judge can only
+            # ever answer UNVERIFIED. Say so loudly rather than looking broken.
+            await self._emit({
+                "type": "warning",
+                "message": "SERPAPI_API_KEY is not set — no evidence can be "
+                           "retrieved, so every claim will come back UNVERIFIED.",
+            })
 
     async def _run_cached(self) -> None:
         loop = asyncio.get_event_loop()
@@ -307,7 +316,7 @@ class DebateFactCheckPipeline:
         try:
             # Search Gemma's speaker-aware query, not the raw claim text.
             snippets = await loop.run_in_executor(
-                None, search_evidence, claim.search_query, self.serpapi_key
+                None, gather_evidence, claim.search_query, claim.text, self.serpapi_key
             )
             snippets = await loop.run_in_executor(None, enrich, snippets, claim.text)
             verdict = await loop.run_in_executor(
@@ -315,7 +324,7 @@ class DebateFactCheckPipeline:
                 claim.speaker, self.context.to_prompt_block(),
             )
             verdict.claim_id = claim.id
-            await self._emit(verdict.to_event())
+            await self._emit({**verdict.to_event(), "evidence_count": len(snippets)})
         except Exception as exc:  # noqa: BLE001 - one bad claim must not kill the run
             await self._emit({
                 "type": "verdict", "claim_id": claim.id, "claim_text": claim.text,

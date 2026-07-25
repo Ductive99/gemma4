@@ -28,7 +28,7 @@ async def test_handle_segment_emits_transcript_claim_and_verdict():
 
     with patch("redpen.pipeline.extract_claims", return_value=[{"claim": "Unemployment hit 3%.", "speaker": "Speaker B",
                                  "search_query": "unemployment rate 3 percent"}]) as mock_extract, \
-         patch("redpen.pipeline.search_evidence", return_value=[Snippet("t", "s", "https://x", "x")]) as mock_search, \
+         patch("redpen.pipeline.gather_evidence", return_value=[Snippet("t", "s", "https://x", "x")]) as mock_search, \
          patch("redpen.pipeline.enrich", side_effect=lambda s, c: s), \
          patch("redpen.pipeline.judge_claim") as mock_judge:
         mock_judge.return_value = Verdict(
@@ -68,7 +68,7 @@ async def test_handle_segment_skips_already_flagged_claims():
     loop = asyncio.get_event_loop()
 
     with patch("redpen.pipeline.extract_claims", return_value=[{"claim": "Already known claim.", "speaker": "", "search_query": "q"}]), \
-         patch("redpen.pipeline.search_evidence") as mock_search, \
+         patch("redpen.pipeline.gather_evidence") as mock_search, \
          patch("redpen.pipeline.judge_claim") as mock_judge:
         await pipeline._handle_segment(TranscriptSegment(0.0, 5.0, LONG), loop)
         await asyncio.sleep(0.05)
@@ -100,7 +100,7 @@ async def test_fact_check_failure_emits_unverified_instead_of_crashing():
     loop = asyncio.get_event_loop()
 
     with patch("redpen.pipeline.extract_claims", return_value=[{"claim": "a claim", "speaker": "", "search_query": "q"}]), \
-         patch("redpen.pipeline.search_evidence", side_effect=RuntimeError("serpapi down")):
+         patch("redpen.pipeline.gather_evidence", side_effect=RuntimeError("serpapi down")):
         await pipeline._handle_segment(TranscriptSegment(0.0, 5.0, LONG), loop)
         await asyncio.sleep(0.05)
 
@@ -136,7 +136,7 @@ async def test_speaker_aware_search_query_is_what_reaches_serpapi():
                 "search_query": "Marc Devereux vote energy bill"}]
 
     with patch("redpen.pipeline.extract_claims", return_value=spotted), \
-         patch("redpen.pipeline.search_evidence", return_value=[]) as mock_search, \
+         patch("redpen.pipeline.gather_evidence", return_value=[]) as mock_search, \
          patch("redpen.pipeline.judge_claim") as mock_judge:
         mock_judge.return_value = Verdict(
             claim_id="", claim_text=spotted[0]["claim"], label="UNVERIFIED",
@@ -177,7 +177,7 @@ async def test_prefetch_tags_events_with_video_reveal_times():
 
     with patch("redpen.youtube.fetch_transcript", return_value=segments), \
          patch("redpen.pipeline.extract_claims", side_effect=[spotted, []]), \
-         patch("redpen.pipeline.search_evidence", return_value=[]), \
+         patch("redpen.pipeline.gather_evidence", return_value=[]), \
          patch("redpen.pipeline.judge_claim") as mock_judge:
         mock_judge.return_value = Verdict(
             claim_id="", claim_text="A claim.", label="TRUE",
@@ -233,7 +233,7 @@ async def test_claim_is_timestamped_to_the_segment_it_was_spoken_in():
     with patch("redpen.youtube.fetch_transcript", return_value=segments), \
          patch("redpen.ingest.fetch_context", return_value=SessionContext()), \
          patch("redpen.pipeline.extract_claims", side_effect=spot), \
-         patch("redpen.pipeline.search_evidence", return_value=[]), \
+         patch("redpen.pipeline.gather_evidence", return_value=[]), \
          patch("redpen.pipeline.enrich", side_effect=lambda s, c: s), \
          patch("redpen.pipeline.judge_claim") as mock_judge:
         mock_judge.return_value = Verdict(
@@ -245,3 +245,35 @@ async def test_claim_is_timestamped_to_the_segment_it_was_spoken_in():
     # spotted on the third segment, but spoken in the second
     assert claim["timestamp"] == 10.0
     assert claim["reveal_at"] == 10.0
+
+
+@pytest.mark.asyncio
+async def test_missing_serpapi_key_is_reported_instead_of_failing_silently():
+    """No key means no evidence means UNVERIFIED for everything — say so."""
+    events, emit = _collector()
+    pipeline = DebateFactCheckPipeline(emit=emit, serpapi_key="")
+    with patch("redpen.ingest.fetch_context", return_value=SessionContext()):
+        await pipeline._load_context(asyncio.get_event_loop())
+    warning = next(e for e in events if e["type"] == "warning")
+    assert "SERPAPI_API_KEY" in warning["message"]
+
+
+@pytest.mark.asyncio
+async def test_verdict_reports_how_much_evidence_it_rested_on():
+    events, emit = _collector()
+    pipeline = DebateFactCheckPipeline(emit=emit)
+    loop = asyncio.get_event_loop()
+    spotted = [{"claim": "a claim", "speaker": "", "search_query": "q"}]
+
+    with patch("redpen.pipeline.extract_claims", return_value=spotted), \
+         patch("redpen.pipeline.gather_evidence", return_value=[]), \
+         patch("redpen.pipeline.enrich", side_effect=lambda s, c: s), \
+         patch("redpen.pipeline.judge_claim") as mock_judge:
+        mock_judge.return_value = Verdict(
+            claim_id="", claim_text="a claim", label="UNVERIFIED",
+            confidence=0.0, explanation="", sources=[])
+        await pipeline._handle_segment(TranscriptSegment(0.0, 5.0, LONG), loop)
+        await asyncio.sleep(0.05)
+
+    verdict = next(e for e in events if e["type"] == "verdict")
+    assert verdict["evidence_count"] == 0
