@@ -1,8 +1,8 @@
 import json
 from unittest.mock import patch
 
-from cassandra_agent import judge
-from cassandra_agent.events import Snippet
+from redpen import judge
+from redpen.events import Snippet
 
 
 def _fake_chat(content):

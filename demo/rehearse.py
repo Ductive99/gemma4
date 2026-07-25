@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cassandra_agent.events import Snippet, Verdict  # noqa: E402
+from redpen.events import Snippet, Verdict  # noqa: E402
 
 # Canned stand-ins, clearly labelled as such in the UI explanation text.
 FAKE_EVIDENCE = [
@@ -85,11 +85,11 @@ def fake_judge(claim_text, snippets, model=None, speaker="", context_block=""):
 def main() -> None:
     import uvicorn
 
-    with patch("cassandra_agent.pipeline.extract_claims", fake_extract), \
-         patch("cassandra_agent.pipeline.search_evidence", lambda q, k=None: FAKE_EVIDENCE), \
-         patch("cassandra_agent.pipeline.judge_claim", fake_judge):
+    with patch("redpen.pipeline.extract_claims", fake_extract), \
+         patch("redpen.pipeline.search_evidence", lambda q, k=None: FAKE_EVIDENCE), \
+         patch("redpen.pipeline.judge_claim", fake_judge):
         print("Rehearsal mode: Gemma and SerpApi are stubbed. Open http://localhost:8000")
-        uvicorn.run("cassandra_agent.server:app", host="0.0.0.0", port=8000, log_level="warning")
+        uvicorn.run("redpen.server:app", host="0.0.0.0", port=8000, log_level="warning")
 
 
 if __name__ == "__main__":

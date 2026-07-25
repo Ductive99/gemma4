@@ -2,505 +2,644 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Cassandra Live — Debate Fact Checker</title>
+<title>Red Pen — live debate fact-checking</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root {
-    --bg: #07080c;
-    --panel: #11141c;
-    --border: #222736;
-    --text: #e9ebf0;
-    --muted: #858ca0;
-    --accent: #6ea8fe;
-    --true: #2fbf74;
-    --false: #e5484d;
-    --misleading: #e5a83a;
-    --unverified: #7c8598;
-    --live: #ff3b30;
+    /* surfaces */
+    --bg:        #0a0a0c;
+    --surface:   #121216;
+    --surface-2: #17171d;
+    --border:    #24242e;
+    --border-2:  #2f2f3b;
+
+    /* type */
+    --text:      #f2f2f5;
+    --text-2:    #b8b9c4;
+    --muted:     #83848f;
+
+    /* brand — reserved for the mark and the live state */
+    --brand:     #ff453a;
+
+    /* semantic verdicts */
+    --true:        #30b56f;
+    --false:       #e5484d;
+    --misleading:  #eda033;
+    --unverified:  #6d7183;
+
+    --radius:    12px;
+    --radius-sm: 9px;
+    --shadow:    0 16px 44px rgba(0,0,0,.55);
+
+    --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   }
+
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0;
-    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
+    font-family: var(--ui);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
 
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2a2a35; border-radius: 99px; border: 3px solid var(--surface); }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3a48; }
+
+  /* ---------------- header ---------------- */
   header {
-    display: flex; align-items: center; gap: 14px;
-    padding: 12px 20px;
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 24px;
+    background: rgba(10,10,12,.86);
     border-bottom: 1px solid var(--border);
-    background: var(--panel);
   }
-  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
-  .live-badge {
+  .wordmark { display: flex; flex-direction: column; gap: 1px; user-select: none; }
+  .wordmark .name {
+    font-size: 17px; font-weight: 700; letter-spacing: -.35px; line-height: 1;
+  }
+  .wordmark svg { display: block; margin-top: 2px; }
+  .tagline {
+    font-size: 11px; color: var(--muted); letter-spacing: .3px;
+    padding-left: 14px; margin-left: 2px; border-left: 1px solid var(--border-2);
+  }
+
+  .live-pill {
     display: none; align-items: center; gap: 7px;
-    background: rgba(255,59,48,.14); color: var(--live);
-    border: 1px solid rgba(255,59,48,.4);
-    padding: 4px 10px; border-radius: 999px;
-    font-size: 11px; font-weight: 800; letter-spacing: 1px;
+    padding: 4px 11px; border-radius: 99px;
+    background: rgba(255,69,58,.12); border: 1px solid rgba(255,69,58,.34);
+    color: var(--brand); font-size: 11px; font-weight: 800; letter-spacing: 1.1px;
   }
-  .live-badge.on { display: inline-flex; }
-  .live-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--live); animation: pulse 1.4s ease-out infinite;
-  }
+  .live-pill.on { display: inline-flex; }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand); animation: pulse 1.5s ease-out infinite; }
   @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(255,59,48,.75); opacity: 1; }
-    70%  { box-shadow: 0 0 0 8px rgba(255,59,48,0); opacity: .75; }
-    100% { box-shadow: 0 0 0 0 rgba(255,59,48,0); opacity: 1; }
+    0%   { box-shadow: 0 0 0 0 rgba(255,69,58,.7); }
+    70%  { box-shadow: 0 0 0 7px rgba(255,69,58,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,69,58,0); }
   }
-  .clock {
-    margin-left: auto; display: flex; align-items: center; gap: 16px;
-    font-size: 13px; color: var(--muted);
-    font-variant-numeric: tabular-nums;
-  }
-  .clock .counts strong { color: var(--text); }
 
-  .controls { display: flex; gap: 10px; padding: 14px 20px; }
-  .controls input[type=text], .controls select {
-    background: var(--panel); border: 1px solid var(--border); color: var(--text);
-    padding: 10px 12px; border-radius: 8px; font-size: 14px;
+  .meta {
+    margin-left: auto; display: flex; align-items: center; gap: 18px;
+    font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums;
   }
-  .controls input[type=text] { flex: 1; }
-  .controls button {
-    background: var(--accent); border: none; color: #06070a;
-    font-weight: 700; padding: 10px 18px; border-radius: 8px;
-    cursor: pointer; font-size: 14px;
-  }
-  .controls button.stop { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .meta .stat strong { color: var(--text); font-weight: 650; }
+  .meta .status { min-width: 92px; text-align: right; }
 
+  /* ---------------- controls ---------------- */
+  .controls {
+    display: flex; gap: 10px; align-items: end;
+    padding: 18px 24px 14px;
+    max-width: 1640px; margin: 0 auto; width: 100%;
+  }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.grow { flex: 1; min-width: 0; }
+  .field label {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .9px;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .field input, .field select {
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 10px 13px; border-radius: var(--radius-sm); font-size: 14px;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .field input::placeholder { color: #5c5d68; }
+  .field input:hover, .field select:hover { border-color: var(--border-2); }
+  .field input:focus, .field select:focus { border-color: #454657; outline: none; }
+
+  .btn {
+    padding: 10px 20px; border-radius: var(--radius-sm); border: 1px solid transparent;
+    font-size: 14px; font-weight: 650; cursor: pointer;
+    transition: transform .1s ease, opacity .15s ease, background .15s ease;
+  }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn:disabled { opacity: .38; cursor: not-allowed; }
+  .btn-primary { background: #f2f2f5; color: #0a0a0c; }
+  .btn-primary:hover:not(:disabled) { background: #fff; }
+  .btn-ghost { background: transparent; border-color: var(--border-2); color: var(--text-2); }
+  .btn-ghost:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+
+  /* ---------------- layout ---------------- */
   main {
-    display: grid; grid-template-columns: minmax(0,1fr) 380px;
-    gap: 16px; padding: 0 20px 20px; align-items: start;
+    display: grid; grid-template-columns: minmax(0,1fr) 400px; gap: 18px;
+    padding: 4px 24px 28px; max-width: 1640px; margin: 0 auto; align-items: start;
   }
-  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
 
-  /* ---------- video stage + overlay ---------- */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .card + .card { margin-top: 18px; }
+  .card-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 16px; border-bottom: 1px solid var(--border);
+  }
+  .card-head h2 {
+    margin: 0; font-size: 11px; font-weight: 750;
+    letter-spacing: 1.1px; text-transform: uppercase; color: var(--muted);
+  }
+  .card-head .count {
+    margin-left: auto; font-size: 11px; color: var(--muted);
+    background: var(--surface-2); border: 1px solid var(--border);
+    padding: 2px 8px; border-radius: 99px; font-variant-numeric: tabular-nums;
+  }
+  .card-body { padding: 14px 16px; }
+  .scroll { max-height: 330px; overflow-y: auto; }
+
+  /* context strip */
+  .context {
+    display: none; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    padding: 11px 16px; margin-bottom: 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--brand); border-radius: var(--radius-sm);
+    font-size: 13px; color: var(--muted);
+  }
+  .context.on { display: flex; }
+  .context .title { color: var(--text); font-weight: 650; }
+  .context .who { color: var(--text-2); }
+
+  /* ---------------- stage ---------------- */
   .stage {
-    position: relative; width: 100%; aspect-ratio: 16 / 9;
+    position: relative; width: 100%; aspect-ratio: 16/9;
     background: #000; border: 1px solid var(--border);
-    border-radius: 12px; overflow: hidden;
+    border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
   }
-  /* The iframe paints in its own layer, so the overlay must be given an
-     explicit stacking context or the captions and cards fall behind the video. */
+  /* an iframe paints in its own layer: the overlay needs an explicit stacking
+     context or the captions and cards fall behind the video */
   .stage iframe { width: 100%; height: 100%; border: 0; display: block; position: relative; z-index: 0; }
-  .stage .captions, .stage .overlay-cards, .stage .visualiser { z-index: 3; }
+  .stage .captions, .stage .overlay, .stage .visualiser { z-index: 3; }
 
-  /* audio-only visualiser, shown when there's no video to embed */
   .visualiser {
-    position: absolute; inset: 0;
-    display: none; align-items: center; justify-content: center; gap: 5px;
-    background: radial-gradient(ellipse at center, #141926 0%, #07080c 75%);
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center; gap: 5px;
+    background: radial-gradient(ellipse at 50% 42%, #16161f 0%, #0a0a0c 72%);
   }
   .visualiser.on { display: flex; }
-  .visualiser span {
-    width: 5px; height: 14px; border-radius: 3px; background: var(--accent); opacity: .55;
-    animation: bounce 1s ease-in-out infinite;
+  .visualiser i {
+    display: block; width: 4px; height: 58px; border-radius: 3px;
+    background: linear-gradient(180deg, #4a4b5c, #2c2d3a);
+    /* scaleY, never height: transform is compositor-only, while animating
+       height forces a document-wide layout every frame — a cost that grows
+       with the transcript and starves the main thread during a long run */
+    transform: scaleY(.2);
+    animation: bounce 1.15s ease-in-out infinite;
   }
-  @keyframes bounce { 0%,100% { height: 12px; } 50% { height: 64px; } }
-  .visualiser .label {
-    position: absolute; bottom: 26%; width: 100%; text-align: center;
-    color: var(--muted); font-size: 12px; letter-spacing: 2px;
-    animation: none; background: none; opacity: 1;
+  @keyframes bounce { 0%,100% { transform: scaleY(.2); opacity:.5 } 50% { transform: scaleY(1); opacity:.9 } }
+  .visualiser .vlabel {
+    position: absolute; top: calc(50% + 62px); width: 100%; text-align: center;
+    font-size: 10.5px; letter-spacing: 2.6px; color: #55565f; font-weight: 700;
   }
 
-  /* live captions burned over the bottom of the video */
   .captions {
     position: absolute; left: 0; right: 0; bottom: 0;
-    padding: 60px 28px 22px;
-    background: linear-gradient(transparent, rgba(0,0,0,.55) 40%, rgba(0,0,0,.9));
-    pointer-events: none;
+    padding: 76px 30px 24px; pointer-events: none;
+    background: linear-gradient(transparent, rgba(0,0,0,.6) 42%, rgba(0,0,0,.93));
   }
-  .caption-line {
-    font-size: clamp(15px, 1.7vw, 22px); line-height: 1.45;
-    font-weight: 600; text-shadow: 0 2px 10px rgba(0,0,0,.9);
-    min-height: 1.45em;
+  .cap-prev { font-size: 13px; color: #9a9ba6; margin-bottom: 7px; min-height: 1.3em; }
+  .cap-speaker {
+    display: inline-block; margin-bottom: 5px;
+    font-size: 10.5px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--brand); text-shadow: 0 1px 8px rgba(0,0,0,.9);
   }
-  .caption-line .w { opacity: 0; animation: wordIn .18s ease-out forwards; }
-  @keyframes wordIn { from { opacity: 0; filter: blur(3px); } to { opacity: 1; filter: none; } }
-  .caption-prev { font-size: 13px; color: #b6bccb; opacity: .55; margin-bottom: 6px; min-height: 1.3em; }
-  .caption-speaker {
-    display: inline-block; margin-bottom: 6px;
-    font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase;
-    color: var(--accent); text-shadow: 0 2px 8px rgba(0,0,0,.9);
+  .cap-line {
+    font-size: clamp(16px, 1.65vw, 23px); line-height: 1.42; font-weight: 620;
+    letter-spacing: -.2px; text-shadow: 0 2px 14px rgba(0,0,0,.95); min-height: 1.42em;
   }
-  .speaker-tag {
-    display: inline-block; margin-bottom: 6px;
-    font-size: 10px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase;
-    color: var(--accent);
-  }
-  .qline {
-    margin-top: 7px; font-size: 11px; color: var(--muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-  .ctx-bar {
-    padding: 8px 14px; margin-bottom: 10px;
-    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-    font-size: 12px; color: var(--muted);
-  }
-  .ctx-bar strong { color: var(--text); font-weight: 600; }
+  .cap-line .w { opacity: 0; animation: wordIn .2s ease-out forwards; }
+  @keyframes wordIn { from { opacity: 0; filter: blur(4px); } to { opacity: 1; filter: none; } }
 
-  /* fact-check cards floating over the video */
-  .overlay-cards {
-    position: absolute; top: 14px; right: 14px;
-    width: min(46%, 380px);
-    display: flex; flex-direction: column; gap: 10px;
-    pointer-events: none;
+  .overlay {
+    position: absolute; top: 16px; right: 16px; width: min(45%, 390px);
+    display: flex; flex-direction: column; gap: 10px; pointer-events: none;
   }
-  .ocard {
-    pointer-events: auto;
-    /* deliberately not backdrop-filter: it stalls compositing and can cost
-       frames mid-pitch, and over video a solid panel reads more legibly anyway */
-    background: rgba(10,13,20,.96);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--unverified);
-    border-radius: 10px; padding: 10px 12px;
-    box-shadow: 0 10px 30px rgba(0,0,0,.55);
-    animation: cardIn .42s cubic-bezier(.2,.9,.3,1.2) both;
+
+  /* ---------------- verdict cards ---------------- */
+  .vcard {
+    pointer-events: auto; position: relative;
+    background: rgba(13,13,17,.965);
+    border: 1px solid var(--border); border-left: 3px solid var(--unverified);
+    border-radius: var(--radius-sm); padding: 11px 13px;
+    box-shadow: 0 12px 34px rgba(0,0,0,.6);
+    animation: cardIn .44s cubic-bezier(.2,.9,.3,1.15) both;
   }
-  .ocard.leaving { animation: cardOut .35s ease-in forwards; }
-  @keyframes cardIn  { from { opacity: 0; transform: translateX(28px) scale(.94); } to { opacity: 1; transform: none; } }
-  @keyframes cardOut { to { opacity: 0; transform: translateX(20px) scale(.96); height: 0; margin: 0; padding: 0; } }
-  .ocard.TRUE        { border-left-color: var(--true); }
-  .ocard.FALSE       { border-left-color: var(--false); }
-  .ocard.MISLEADING  { border-left-color: var(--misleading); }
-  .ocard.UNVERIFIED  { border-left-color: var(--unverified); }
-  .ocard .ct { font-size: 13px; line-height: 1.4; margin-bottom: 8px; }
-  .ocard .ex { font-size: 12px; color: #a9b0c0; line-height: 1.4; margin-top: 6px; }
+  .vcard.leaving { animation: cardOut .34s ease-in forwards; }
+  @keyframes cardIn  { from { opacity:0; transform: translateX(26px) scale(.95); } to { opacity:1; transform:none; } }
+  @keyframes cardOut { to { opacity:0; transform: translateX(18px) scale(.97); margin-top:-6px; } }
+  .vcard.TRUE { border-left-color: var(--true); }
+  .vcard.FALSE { border-left-color: var(--false); }
+  .vcard.MISLEADING { border-left-color: var(--misleading); }
+  .vcard.UNVERIFIED { border-left-color: var(--unverified); }
+
+  .speaker {
+    font-size: 10px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase;
+    color: var(--brand); margin-bottom: 5px;
+  }
+  .claim { font-size: 13.5px; line-height: 1.42; font-weight: 550; margin-bottom: 9px; letter-spacing: -.1px; }
+  .explain { font-size: 12.5px; color: var(--text-2); line-height: 1.45; margin-top: 8px; }
+  .query {
+    margin-top: 8px; font-family: var(--mono); font-size: 11px;
+    color: var(--muted); word-break: break-word;
+  }
+  .query::before { content: "⌕ "; opacity: .7; }
 
   .badge {
     display: inline-flex; align-items: center; gap: 6px;
-    font-size: 10px; font-weight: 800; letter-spacing: .6px;
-    padding: 3px 9px; border-radius: 999px; color: #06070a;
+    padding: 3.5px 10px; border-radius: 99px;
+    font-size: 10px; font-weight: 800; letter-spacing: .7px; color: #08080a;
   }
   .badge.checking {
-    background: linear-gradient(90deg,#2b3244,#3d4763,#2b3244);
-    background-size: 200% 100%; color: #cdd4e3;
-    animation: shimmer 1.1s linear infinite;
+    color: #c8c9d6; background: var(--surface-2); border: 1px solid var(--border-2);
   }
-  @keyframes shimmer { to { background-position: -200% 0; } }
   .badge.TRUE { background: var(--true); }
   .badge.FALSE { background: var(--false); }
   .badge.MISLEADING { background: var(--misleading); }
-  .badge.UNVERIFIED { background: var(--unverified); }
-  .badge .spin {
+  .badge.UNVERIFIED { background: var(--unverified); color: #f0f0f3; }
+  .spin {
     width: 9px; height: 9px; border-radius: 50%;
-    border: 1.5px solid rgba(255,255,255,.35); border-top-color: #fff;
-    animation: spin .7s linear infinite;
+    border: 1.5px solid rgba(255,255,255,.25); border-top-color: #d8d9e4;
+    animation: spin .72s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ---------- side panels ---------- */
-  .panel {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 12px; padding: 12px 14px; margin-bottom: 16px;
-  }
-  .panel h2 {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px;
-    color: var(--muted); margin: 0 0 10px;
-  }
-  .scroll { max-height: 340px; overflow-y: auto; }
-  .hcard {
-    border: 1px solid var(--border); border-left: 3px solid var(--unverified);
-    border-radius: 8px; padding: 9px 11px; margin-bottom: 8px; background: #0d1017;
-    animation: cardIn .3s ease-out both;
-  }
-  .hcard.TRUE { border-left-color: var(--true); }
-  .hcard.FALSE { border-left-color: var(--false); }
-  .hcard.MISLEADING { border-left-color: var(--misleading); }
-  .hcard.UNVERIFIED { border-left-color: var(--unverified); }
-  .hcard .ct { font-size: 13px; line-height: 1.4; margin-bottom: 7px; }
-  .hcard .ex { font-size: 12px; color: var(--muted); line-height: 1.4; margin-top: 6px; }
-  .sources { margin-top: 7px; font-size: 11px; }
-  .sources a { color: var(--accent); margin-right: 9px; text-decoration: none; }
-  .sources a:hover { text-decoration: underline; }
+  .conf { margin-top: 8px; height: 3px; border-radius: 99px; background: #22222c; overflow: hidden; }
+  .conf i { display: block; height: 100%; border-radius: 99px; width: 0; transition: width .7s cubic-bezier(.2,.8,.3,1); }
+  .conf.TRUE i { background: var(--true); }
+  .conf.FALSE i { background: var(--false); }
+  .conf.MISLEADING i { background: var(--misleading); }
+  .conf.UNVERIFIED i { background: var(--unverified); }
 
-  #transcript p { margin: 0 0 7px; line-height: 1.5; color: #c3c9d6; font-size: 13px; }
-  #transcript .ts { color: var(--muted); font-size: 10px; margin-right: 7px; font-variant-numeric: tabular-nums; }
-  #transcript p.fresh { animation: wordIn .3s ease-out both; }
-  .hint { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .sources { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .sources a {
+    font-size: 11px; color: var(--text-2); text-decoration: none;
+    background: var(--surface-2); border: 1px solid var(--border);
+    padding: 2.5px 9px; border-radius: 99px; transition: border-color .15s ease, color .15s ease;
+  }
+  .sources a:hover { color: var(--text); border-color: var(--border-2); }
+
+  /* history list */
+  .hitem { border-bottom: 1px solid var(--border); padding: 13px 0; animation: cardIn .3s ease-out both; }
+  .hitem:first-child { padding-top: 2px; }
+  .hitem:last-child { border-bottom: 0; padding-bottom: 2px; }
+
+  /* verdict tally */
+  .tally { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .tally .t {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 10px 12px;
+  }
+  .tally .t .n { font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.6px; }
+  .tally .t .l { font-size: 9.5px; font-weight: 750; letter-spacing: .9px; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
+  .tally .t.TRUE .n { color: var(--true); }
+  .tally .t.FALSE .n { color: var(--false); }
+  .tally .t.MISLEADING .n { color: var(--misleading); }
+  .tally .t.UNVERIFIED .n { color: var(--unverified); }
+
+  /* transcript */
+  #transcript p { margin: 0 0 9px; font-size: 13px; line-height: 1.55; color: var(--text-2); }
+  #transcript p:last-child { margin-bottom: 0; }
+  #transcript .ts { color: #5f606b; font-size: 10.5px; margin-right: 8px; font-variant-numeric: tabular-nums; }
+  #transcript .who { color: var(--text); font-weight: 650; }
+  #transcript p.fresh { animation: wordIn .32s ease-out both; }
+
+  .empty { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0; }
+  footer {
+    max-width: 1640px; margin: 0 auto; padding: 0 24px 28px;
+    font-size: 11.5px; color: #5c5d68; line-height: 1.6;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Cassandra Live</h1>
-  <span class="live-badge" id="liveBadge"><span class="live-dot"></span>LIVE</span>
-  <div class="clock">
-    <span class="counts"><strong id="claimCount">0</strong> claims · <strong id="verdictCount">0</strong> checked</span>
-    <span id="elapsed">00:00</span>
-    <span id="status">idle</span>
+  <div class="wordmark">
+    <span class="name">Red Pen</span>
+    <svg width="62" height="5" viewBox="0 0 62 5" fill="none" aria-hidden="true">
+      <path d="M1 3.2c9-1.6 19-2.3 30-1.9 10 .4 19 1.4 30 .6"
+            stroke="#ff453a" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+    </svg>
+  </div>
+  <span class="tagline">Live debate fact-checking · Gemma&nbsp;4</span>
+  <span class="live-pill" id="livePill"><span class="live-dot"></span>LIVE</span>
+
+  <div class="meta">
+    <span class="stat"><strong id="nClaims">0</strong> claims</span>
+    <span class="stat"><strong id="nChecked">0</strong> checked</span>
+    <span class="stat" id="elapsed">00:00</span>
+    <span class="status" id="status">Idle</span>
   </div>
 </header>
 
 <div class="controls">
-  <input id="url" type="text" placeholder="YouTube video or live stream URL…">
-  <select id="mode">
-    <option value="transcript" selected>Sample debate (Gemma + SerpApi live)</option>
-    <option value="live">Live YouTube</option>
-    <option value="cached">Cached replay (offline)</option>
-  </select>
-  <button id="startBtn">Start</button>
-  <button id="stopBtn" class="stop">Stop</button>
+  <div class="field grow">
+    <label for="url">Video source</label>
+    <input id="url" type="text" placeholder="Paste a YouTube video or live stream URL…">
+  </div>
+  <div class="field">
+    <label for="mode">Mode</label>
+    <select id="mode">
+      <option value="transcript" selected>Sample debate — Gemma + SerpApi live</option>
+      <option value="live">Live YouTube</option>
+      <option value="cached">Cached replay — offline</option>
+    </select>
+  </div>
+  <button class="btn btn-primary" id="startBtn">Start listening</button>
+  <button class="btn btn-ghost" id="stopBtn" disabled>Stop</button>
 </div>
 
 <main>
-  <div>
-    <div class="ctx-bar" id="ctxBar" style="display:none"></div>
+  <section>
+    <div class="context" id="context"></div>
+
     <div class="stage" id="stage">
-      <div class="visualiser on" id="visualiser">
-        <span style="animation-delay:0s"></span><span style="animation-delay:.1s"></span>
-        <span style="animation-delay:.2s"></span><span style="animation-delay:.3s"></span>
-        <span style="animation-delay:.4s"></span><span style="animation-delay:.5s"></span>
-        <span style="animation-delay:.6s"></span><span style="animation-delay:.7s"></span>
-        <span style="animation-delay:.8s"></span><span style="animation-delay:.7s"></span>
-        <span style="animation-delay:.6s"></span><span style="animation-delay:.5s"></span>
-        <span style="animation-delay:.4s"></span><span style="animation-delay:.3s"></span>
-        <span style="animation-delay:.2s"></span><span style="animation-delay:.1s"></span>
-        <div class="label" id="visLabel">LISTENING</div>
+      <div class="visualiser on" id="visualiser" aria-hidden="true">
+        <div class="vlabel" id="vlabel">AWAITING SOURCE</div>
       </div>
-      <div class="overlay-cards" id="overlayCards"></div>
+      <div class="overlay" id="overlay"></div>
       <div class="captions">
-        <div class="caption-prev" id="captionPrev"></div>
-        <div class="caption-speaker" id="captionSpeaker"></div>
-        <div class="caption-line" id="captionLine"></div>
+        <div class="cap-prev" id="capPrev"></div>
+        <div class="cap-speaker" id="capSpeaker"></div>
+        <div class="cap-line" id="capLine" aria-live="polite"></div>
       </div>
     </div>
-  </div>
 
-  <div>
-    <section class="panel">
-      <h2>Fact-check history</h2>
-      <div class="scroll" id="claims"><p class="hint">Claims Gemma spots will appear here with their verdicts and sources.</p></div>
-    </section>
-    <section class="panel">
-      <h2>Transcript</h2>
-      <div class="scroll" id="transcript"><p class="hint">Live transcript will appear here.</p></div>
-    </section>
-  </div>
+    <div class="card">
+      <div class="card-head"><h2>Verdicts</h2></div>
+      <div class="card-body">
+        <div class="tally">
+          <div class="t TRUE"><div class="n" id="tTRUE">0</div><div class="l">True</div></div>
+          <div class="t FALSE"><div class="n" id="tFALSE">0</div><div class="l">False</div></div>
+          <div class="t MISLEADING"><div class="n" id="tMISLEADING">0</div><div class="l">Misleading</div></div>
+          <div class="t UNVERIFIED"><div class="n" id="tUNVERIFIED">0</div><div class="l">Unverified</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <div class="card-head"><h2>Fact-check history</h2><span class="count" id="histCount">0</span></div>
+      <div class="card-body scroll" id="history">
+        <p class="empty">Claims spotted by Gemma appear here with their verdict, confidence, the search that was run, and the sources behind it.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Transcript</h2></div>
+      <div class="card-body scroll" id="transcript">
+        <p class="empty">Live transcript will stream here as the debate is heard.</p>
+      </div>
+    </div>
+  </section>
 </main>
+
+<footer>
+  Red Pen reports what the retrieved evidence supports — it reads search results, not primary sources. A research aid, not an arbiter.
+</footer>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const statusEl = $('status'), liveBadge = $('liveBadge'), elapsedEl = $('elapsed');
-const captionLine = $('captionLine'), captionPrev = $('captionPrev');
-const overlayCards = $('overlayCards'), claimsEl = $('claims'), transcriptEl = $('transcript');
-const stage = $('stage'), visualiser = $('visualiser'), visLabel = $('visLabel');
+const stage = $('stage'), overlay = $('overlay'), history_ = $('history'), transcriptEl = $('transcript');
+const capLine = $('capLine'), capPrev = $('capPrev'), capSpeaker = $('capSpeaker');
 
-let ws = null, sessionId = null, startedAt = null, timer = null;
-let claimCount = 0, verdictCount = 0;
-const cards = {};          // claim_id -> { overlay, history }
-const captionQueue = [];
-let captionPlaying = false;
+let ws = null, sessionId = null, timer = null, startedAt = null;
+let nClaims = 0, nChecked = 0;
+const tally = { TRUE: 0, FALSE: 0, MISLEADING: 0, UNVERIFIED: 0 };
+const cards = {};
+const capQueue = []; let capPlaying = false;
 
-/* ---------- helpers ---------- */
-function setStatus(t) { statusEl.textContent = t; }
+/* ---------- visualiser bars ---------- */
+(function buildBars() {
+  const v = $('visualiser');
+  for (let i = 0; i < 22; i++) {
+    const bar = document.createElement('i');
+    bar.style.animationDelay = `${(Math.abs(11 - i) * 0.07).toFixed(2)}s`;
+    v.insertBefore(bar, v.firstChild);
+  }
+})();
 
-function setLive(on) {
-  liveBadge.classList.toggle('on', on);
+/* ---------- chrome ---------- */
+function setStatus(t) { $('status').textContent = t; }
+
+function setRunning(on) {
+  $('livePill').classList.toggle('on', on);
+  $('startBtn').disabled = on;
+  $('stopBtn').disabled = !on;
+  $('vlabel').textContent = on ? 'LISTENING' : 'AWAITING SOURCE';
   if (on) {
     startedAt = Date.now();
     timer = setInterval(() => {
       const s = Math.floor((Date.now() - startedAt) / 1000);
-      elapsedEl.textContent =
-        `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+      $('elapsed').textContent =
+        `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
     }, 500);
-  } else if (timer) {
-    clearInterval(timer); timer = null;
-  }
+  } else if (timer) { clearInterval(timer); timer = null; }
 }
 
-function clearHint(el) { const h = el.querySelector('.hint'); if (h) h.remove(); }
+function clearEmpty(el) { const e = el.querySelector('.empty'); if (e) e.remove(); }
+const esc = (s) => { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; };
 
 function youtubeId(url) {
-  const m = url.match(/(?:youtu\.be\/|v=|\/embed\/|\/live\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
+  const m = String(url || '').match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/live\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
 }
 
 function mountVideo(url) {
   const id = youtubeId(url);
   if (!id) return false;
-  const frame = document.createElement('iframe');
-  frame.src = `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&modestbranding=1`;
-  frame.allow = 'autoplay; encrypted-media; picture-in-picture';
-  frame.allowFullscreen = true;
-  stage.insertBefore(frame, stage.firstChild);
-  visualiser.classList.remove('on');
+  stage.querySelectorAll('iframe').forEach(f => f.remove());
+  const f = document.createElement('iframe');
+  f.src = `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&modestbranding=1`;
+  f.allow = 'autoplay; encrypted-media; picture-in-picture';
+  f.allowFullscreen = true;
+  f.title = 'Debate video';
+  stage.insertBefore(f, stage.firstChild);
+  $('visualiser').classList.remove('on');
   return true;
 }
 
-/* ---------- live captions, revealed word by word ---------- */
+/* ---------- captions ---------- */
 function enqueueCaption(text, durationMs, speaker) {
-  captionQueue.push({ text, durationMs, speaker });
-  if (!captionPlaying) playNextCaption();
+  capQueue.push({ text, durationMs, speaker });
+  if (!capPlaying) playCaption();
 }
 
-function playNextCaption() {
-  const next = captionQueue.shift();
-  if (!next) { captionPlaying = false; return; }
-  captionPlaying = true;
+function playCaption() {
+  const next = capQueue.shift();
+  if (!next) { capPlaying = false; return; }
+  capPlaying = true;
 
-  if (captionLine.textContent.trim()) captionPrev.textContent = captionLine.textContent;
-  $('captionSpeaker').textContent = next.speaker || '';
+  if (capLine.textContent.trim()) capPrev.textContent = capLine.textContent;
+  capSpeaker.textContent = next.speaker || '';
 
   const words = next.text.split(/\s+/).filter(Boolean);
-  // Reveal across the segment's own duration, but never crawl or blur past it.
-  const total = Math.max(600, Math.min(next.durationMs || 2500, 6000));
+  // Speech can arrive faster than its own duration — an accelerated replay, or
+  // Whisper emitting a burst after a slow chunk. Without this the queue grows
+  // without bound and captions drift ever further behind the video, so shed
+  // time in proportion to the backlog and let them catch up.
+  const backlog = capQueue.length;
+  let total = Math.max(650, Math.min(next.durationMs || 2500, 6500));
+  if (backlog) total = Math.max(420, total / (1 + backlog));
   const step = total / Math.max(words.length, 1);
 
-  captionLine.innerHTML = '';
+  capLine.innerHTML = '';
   words.forEach((w, i) => {
-    const span = document.createElement('span');
-    span.className = 'w';
-    span.textContent = w + ' ';
-    span.style.animationDelay = `${(i * step)}ms`;
-    captionLine.appendChild(span);
+    const s = document.createElement('span');
+    s.className = 'w'; s.textContent = w + ' ';
+    s.style.animationDelay = `${(i * step).toFixed(0)}ms`;
+    capLine.appendChild(s);
   });
-
-  setTimeout(playNextCaption, total);
+  setTimeout(playCaption, total);
 }
 
 /* ---------- events ---------- */
 function onContext(ev) {
   const bits = [];
-  if (ev.title) bits.push(`<strong>${escapeHtml(ev.title)}</strong>`);
+  if (ev.title) bits.push(`<span class="title">${esc(ev.title)}</span>`);
   if (ev.participants && ev.participants.length)
-    bits.push(`speakers: <strong>${escapeHtml(ev.participants.join(' · '))}</strong>`);
-  if (ev.upload_date) bits.push(escapeHtml(ev.upload_date));
+    bits.push(`<span class="who">${esc(ev.participants.join('  ·  '))}</span>`);
+  if (ev.upload_date) bits.push(esc(ev.upload_date));
   if (!bits.length) return;
-  const bar = $('ctxBar');
-  bar.innerHTML = bits.join(' &nbsp;·&nbsp; ');
-  bar.style.display = 'block';
+  const c = $('context');
+  c.innerHTML = bits.join('<span style="opacity:.4">•</span>');
+  c.classList.add('on');
 }
 
 function onTranscript(ev) {
-  const durationMs = Math.max(0, (ev.end - ev.start)) * 1000;
-  enqueueCaption(ev.text, durationMs, ev.speaker);
-
-  clearHint(transcriptEl);
+  enqueueCaption(ev.text, Math.max(0, ev.end - ev.start) * 1000, ev.speaker);
+  clearEmpty(transcriptEl);
   const p = document.createElement('p');
   p.className = 'fresh';
-  const m = Math.floor(ev.start / 60), s = String(Math.floor(ev.start % 60)).padStart(2,'0');
-  const who = ev.speaker ? `<strong>${escapeHtml(ev.speaker)}:</strong> ` : '';
-  p.innerHTML = `<span class="ts">${m}:${s}</span>${who}${escapeHtml(ev.text)}`;
+  const m = Math.floor(ev.start / 60), s = String(Math.floor(ev.start % 60)).padStart(2, '0');
+  const who = ev.speaker ? `<span class="who">${esc(ev.speaker)}:</span> ` : '';
+  p.innerHTML = `<span class="ts">${m}:${s}</span>${who}${esc(ev.text)}`;
   transcriptEl.appendChild(p);
   transcriptEl.scrollTop = transcriptEl.scrollHeight;
 }
 
-function onClaim(ev) {
-  claimCount++; $('claimCount').textContent = claimCount;
-
-  const who = ev.speaker ? `<div class="speaker-tag">${escapeHtml(ev.speaker)}</div>` : '';
-  const query = ev.search_query
-    ? `<div class="qline">⌕ ${escapeHtml(ev.search_query)}</div>` : '';
-
-  const overlay = document.createElement('div');
-  overlay.className = 'ocard';
-  overlay.innerHTML = `
-    ${who}
-    <div class="ct">${escapeHtml(ev.text)}</div>
+function claimMarkup(ev, withQuery) {
+  return `
+    ${ev.speaker ? `<div class="speaker">${esc(ev.speaker)}</div>` : ''}
+    <div class="claim">${esc(ev.text)}</div>
     <span class="badge checking"><span class="spin"></span>CHECKING</span>
-    <div class="ex" data-role="ex"></div>`;
-  overlayCards.appendChild(overlay);
+    ${withQuery && ev.search_query ? `<div class="query">${esc(ev.search_query)}</div>` : ''}
+    <div class="explain" data-role="explain"></div>
+    <div class="conf" data-role="conf"><i></i></div>
+    <div class="sources" data-role="sources"></div>`;
+}
+
+function onClaim(ev) {
+  nClaims++; $('nClaims').textContent = nClaims;
+
+  const card = document.createElement('article');
+  card.className = 'vcard';
+  card.innerHTML = claimMarkup(ev, false);
+  overlay.appendChild(card);
   trimOverlay();
 
-  clearHint(claimsEl);
-  const history = document.createElement('div');
-  history.className = 'hcard';
-  history.innerHTML = `
-    ${who}
-    <div class="ct">${escapeHtml(ev.text)}</div>
-    <span class="badge checking"><span class="spin"></span>CHECKING</span>
-    ${query}
-    <div class="ex" data-role="ex"></div>
-    <div class="sources" data-role="sources"></div>`;
-  claimsEl.prepend(history);
+  clearEmpty(history_);
+  const item = document.createElement('article');
+  item.className = 'hitem';
+  item.innerHTML = claimMarkup(ev, true);
+  history_.prepend(item);
+  $('histCount').textContent = nClaims;
 
-  cards[ev.id] = { overlay, history };
+  cards[ev.id] = { card, item };
 }
 
 function onVerdict(ev) {
-  verdictCount++; $('verdictCount').textContent = verdictCount;
+  nChecked++; $('nChecked').textContent = nChecked;
+  if (tally[ev.label] !== undefined) { tally[ev.label]++; $('t' + ev.label).textContent = tally[ev.label]; }
+
   const pair = cards[ev.claim_id];
   if (!pair) return;
-
   const pct = Math.round((ev.confidence || 0) * 100);
-  for (const el of [pair.overlay, pair.history]) {
-    if (!el) continue;
+
+  for (const el of [pair.card, pair.item]) {
     el.classList.add(ev.label);
     const badge = el.querySelector('.badge');
     badge.className = `badge ${ev.label}`;
     badge.textContent = `${ev.label} · ${pct}%`;
-    const ex = el.querySelector('[data-role=ex]');
-    if (ex) ex.textContent = ev.explanation || '';
+    el.querySelector('[data-role=explain]').textContent = ev.explanation || '';
+    const conf = el.querySelector('[data-role=conf]');
+    conf.classList.add(ev.label);
+    requestAnimationFrame(() => { conf.querySelector('i').style.width = pct + '%'; });
   }
 
-  const src = pair.history.querySelector('[data-role=sources]');
-  if (src) {
-    src.innerHTML = (ev.sources || [])
-      .map((l, i) => `<a href="${escapeAttr(l)}" target="_blank" rel="noopener">source ${i+1}</a>`)
-      .join('');
-  }
+  const src = pair.item.querySelector('[data-role=sources]');
+  src.innerHTML = (ev.sources || []).map((l, i) => {
+    let host = `source ${i+1}`;
+    try { host = new URL(l).hostname.replace(/^www\./, ''); } catch (_) {}
+    return `<a href="${esc(l)}" target="_blank" rel="noopener">${esc(host)}</a>`;
+  }).join('');
 
-  // let the verdict sit on screen, then retire the overlay card
-  setTimeout(() => retireOverlay(pair.overlay), 9000);
+  setTimeout(() => retire(pair.card), 9500);
 }
 
-function trimOverlay() {
-  while (overlayCards.children.length > 3) retireOverlay(overlayCards.firstElementChild);
-}
-
-function retireOverlay(el) {
+function retire(el) {
   if (!el || !el.isConnected || el.classList.contains('leaving')) return;
   el.classList.add('leaving');
-  setTimeout(() => el.remove(), 350);
+  setTimeout(() => el.remove(), 340);
 }
 
-function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
-function escapeAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
+/* Retirement is animated, so a card stays in the DOM for another 340ms after
+   retire(). Counting raw children here would spin forever once a 4th card
+   arrives while the first is still leaving — only ever count the live ones. */
+function trimOverlay(max = 3) {
+  const live = [...overlay.children].filter((c) => !c.classList.contains('leaving'));
+  for (let i = 0; i < live.length - max; i++) retire(live[i]);
+}
 
 /* ---------- session ---------- */
 function connect(id) {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws/${id}`);
-  ws.onopen = () => { setStatus('listening'); setLive(true); };
-  ws.onclose = () => { setStatus('disconnected'); setLive(false); };
-  ws.onerror = () => setStatus('connection error');
-  ws.onmessage = (msg) => {
-    const ev = JSON.parse(msg.data);
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${id}`);
+  ws.onopen = () => { setStatus('Listening'); setRunning(true); };
+  ws.onclose = () => { setRunning(false); };
+  ws.onerror = () => setStatus('Connection error');
+  ws.onmessage = (m) => {
+    const ev = JSON.parse(m.data);
     if (ev.type === 'context') onContext(ev);
     else if (ev.type === 'transcript') onTranscript(ev);
     else if (ev.type === 'claim') onClaim(ev);
     else if (ev.type === 'verdict') onVerdict(ev);
-    else if (ev.type === 'done') { setStatus('finished'); setLive(false); visLabel.textContent = 'FINISHED'; }
-    else if (ev.type === 'error') { setStatus(`error: ${ev.message}`); setLive(false); }
+    else if (ev.type === 'done') { setStatus('Finished'); setRunning(false); $('vlabel').textContent = 'FINISHED'; }
+    else if (ev.type === 'error') { setStatus('Error'); setRunning(false); }
   };
 }
 
 $('startBtn').addEventListener('click', async () => {
   const youtube_url = $('url').value.trim();
   const mode = $('mode').value;
-  if (mode === 'live' && !youtube_url) { setStatus('paste a URL first'); return; }
-
-  // Any mode can embed a video: in sample mode it just plays alongside.
+  if (mode === 'live' && !youtube_url) { setStatus('URL required'); $('url').focus(); return; }
   if (youtube_url) mountVideo(youtube_url);
 
-  setStatus('starting…');
-  const res = await fetch('/api/sessions', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ youtube_url, mode }),
-  });
-  const data = await res.json();
-  sessionId = data.session_id;
-  connect(sessionId);
+  setStatus('Starting…');
+  try {
+    const res = await fetch('/api/sessions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ youtube_url, mode }),
+    });
+    const data = await res.json();
+    if (!data.session_id) { setStatus('Failed to start'); return; }
+    sessionId = data.session_id;
+    connect(sessionId);
+  } catch (_) { setStatus('Failed to start'); }
 });
 
 $('stopBtn').addEventListener('click', async () => {
   if (!sessionId) return;
   await fetch(`/api/sessions/${sessionId}/stop`, { method: 'POST' });
-  setStatus('stopped'); setLive(false);
+  setStatus('Stopped'); setRunning(false);
   if (ws) ws.close();
 });
 </script>

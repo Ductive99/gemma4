@@ -1,8 +1,8 @@
-# Cassandra Live — an autonomous debate fact-checker built on Gemma 4
+# Red Pen — an autonomous debate fact-checker built on Gemma 4
 
 **Paris Gemma 4 Hackathon · Track 2 — Autonomous Agents**
 
-Cassandra listens to a debate as it happens, decides on its own which sentences are
+Red Pen listens to a debate as it happens, decides on its own which sentences are
 worth checking, goes and finds evidence on the open web, and returns a verdict with
 sources — while the speaker is still talking.
 
@@ -19,7 +19,7 @@ audience, long after the claim has done its work. The bottleneck is not knowledg
 evidence is usually a single web search away — it is that a human has to notice the
 claim, decide it is checkable, search, read, and judge. That loop takes minutes.
 
-Cassandra closes that loop in seconds, locally.
+Red Pen closes that loop in seconds, locally.
 
 ## How it works
 
@@ -156,7 +156,7 @@ the continuously-running hot path can use a smaller Gemma than the once-per-clai
 ## Layout
 
 ```
-cassandra_agent/
+redpen/
   sources.py     three ways transcript enters the pipeline
   ingest.py      YouTube -> PCM via yt-dlp + ffmpeg
   transcribe.py  faster-whisper, on-device
@@ -167,11 +167,13 @@ cassandra_agent/
   server.py      FastAPI + WebSocket
 static/index.html  live overlay UI
 demo/              sample transcript + rehearsal harness
-tests/             24 tests, external services mocked
+tests/             26 tests, external services mocked
 ```
 
-`cassandra_v1.py`, `cassandra_demo.py` and `test_*.py` in the repository root are the
-earlier falsification-engine prototype this project grew out of, kept for reference.
+The project was called **Cassandra** during the sprint and was renamed to **Red Pen**.
+`cassandra_v1.py`, `cassandra_demo.py`, `start_demo.sh`, `PASSATION.md` and the root
+`test_*.py` scripts are that earlier falsification-engine prototype, kept unchanged for
+reference — they are not part of the running application.
 
 ## Tests
 
