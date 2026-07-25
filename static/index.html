@@ -83,7 +83,10 @@
     background: #000; border: 1px solid var(--border);
     border-radius: 12px; overflow: hidden;
   }
-  .stage iframe { width: 100%; height: 100%; border: 0; display: block; }
+  /* The iframe paints in its own layer, so the overlay must be given an
+     explicit stacking context or the captions and cards fall behind the video. */
+  .stage iframe { width: 100%; height: 100%; border: 0; display: block; position: relative; z-index: 0; }
+  .stage .captions, .stage .overlay-cards, .stage .visualiser { z-index: 3; }
 
   /* audio-only visualiser, shown when there's no video to embed */
   .visualiser {
@@ -118,6 +121,26 @@
   .caption-line .w { opacity: 0; animation: wordIn .18s ease-out forwards; }
   @keyframes wordIn { from { opacity: 0; filter: blur(3px); } to { opacity: 1; filter: none; } }
   .caption-prev { font-size: 13px; color: #b6bccb; opacity: .55; margin-bottom: 6px; min-height: 1.3em; }
+  .caption-speaker {
+    display: inline-block; margin-bottom: 6px;
+    font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--accent); text-shadow: 0 2px 8px rgba(0,0,0,.9);
+  }
+  .speaker-tag {
+    display: inline-block; margin-bottom: 6px;
+    font-size: 10px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase;
+    color: var(--accent);
+  }
+  .qline {
+    margin-top: 7px; font-size: 11px; color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .ctx-bar {
+    padding: 8px 14px; margin-bottom: 10px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 12px; color: var(--muted);
+  }
+  .ctx-bar strong { color: var(--text); font-weight: 600; }
 
   /* fact-check cards floating over the video */
   .overlay-cards {
@@ -225,6 +248,7 @@
 
 <main>
   <div>
+    <div class="ctx-bar" id="ctxBar" style="display:none"></div>
     <div class="stage" id="stage">
       <div class="visualiser on" id="visualiser">
         <span style="animation-delay:0s"></span><span style="animation-delay:.1s"></span>
@@ -240,6 +264,7 @@
       <div class="overlay-cards" id="overlayCards"></div>
       <div class="captions">
         <div class="caption-prev" id="captionPrev"></div>
+        <div class="caption-speaker" id="captionSpeaker"></div>
         <div class="caption-line" id="captionLine"></div>
       </div>
     </div>
@@ -307,8 +332,8 @@ function mountVideo(url) {
 }
 
 /* ---------- live captions, revealed word by word ---------- */
-function enqueueCaption(text, durationMs) {
-  captionQueue.push({ text, durationMs });
+function enqueueCaption(text, durationMs, speaker) {
+  captionQueue.push({ text, durationMs, speaker });
   if (!captionPlaying) playNextCaption();
 }
 
@@ -318,6 +343,7 @@ function playNextCaption() {
   captionPlaying = true;
 
   if (captionLine.textContent.trim()) captionPrev.textContent = captionLine.textContent;
+  $('captionSpeaker').textContent = next.speaker || '';
 
   const words = next.text.split(/\s+/).filter(Boolean);
   // Reveal across the segment's own duration, but never crawl or blur past it.
@@ -337,15 +363,28 @@ function playNextCaption() {
 }
 
 /* ---------- events ---------- */
+function onContext(ev) {
+  const bits = [];
+  if (ev.title) bits.push(`<strong>${escapeHtml(ev.title)}</strong>`);
+  if (ev.participants && ev.participants.length)
+    bits.push(`speakers: <strong>${escapeHtml(ev.participants.join(' · '))}</strong>`);
+  if (ev.upload_date) bits.push(escapeHtml(ev.upload_date));
+  if (!bits.length) return;
+  const bar = $('ctxBar');
+  bar.innerHTML = bits.join(' &nbsp;·&nbsp; ');
+  bar.style.display = 'block';
+}
+
 function onTranscript(ev) {
   const durationMs = Math.max(0, (ev.end - ev.start)) * 1000;
-  enqueueCaption(ev.text, durationMs);
+  enqueueCaption(ev.text, durationMs, ev.speaker);
 
   clearHint(transcriptEl);
   const p = document.createElement('p');
   p.className = 'fresh';
   const m = Math.floor(ev.start / 60), s = String(Math.floor(ev.start % 60)).padStart(2,'0');
-  p.innerHTML = `<span class="ts">${m}:${s}</span>${escapeHtml(ev.text)}`;
+  const who = ev.speaker ? `<strong>${escapeHtml(ev.speaker)}:</strong> ` : '';
+  p.innerHTML = `<span class="ts">${m}:${s}</span>${who}${escapeHtml(ev.text)}`;
   transcriptEl.appendChild(p);
   transcriptEl.scrollTop = transcriptEl.scrollHeight;
 }
@@ -353,9 +392,14 @@ function onTranscript(ev) {
 function onClaim(ev) {
   claimCount++; $('claimCount').textContent = claimCount;
 
+  const who = ev.speaker ? `<div class="speaker-tag">${escapeHtml(ev.speaker)}</div>` : '';
+  const query = ev.search_query
+    ? `<div class="qline">⌕ ${escapeHtml(ev.search_query)}</div>` : '';
+
   const overlay = document.createElement('div');
   overlay.className = 'ocard';
   overlay.innerHTML = `
+    ${who}
     <div class="ct">${escapeHtml(ev.text)}</div>
     <span class="badge checking"><span class="spin"></span>CHECKING</span>
     <div class="ex" data-role="ex"></div>`;
@@ -366,8 +410,10 @@ function onClaim(ev) {
   const history = document.createElement('div');
   history.className = 'hcard';
   history.innerHTML = `
+    ${who}
     <div class="ct">${escapeHtml(ev.text)}</div>
     <span class="badge checking"><span class="spin"></span>CHECKING</span>
+    ${query}
     <div class="ex" data-role="ex"></div>
     <div class="sources" data-role="sources"></div>`;
   claimsEl.prepend(history);
@@ -424,7 +470,8 @@ function connect(id) {
   ws.onerror = () => setStatus('connection error');
   ws.onmessage = (msg) => {
     const ev = JSON.parse(msg.data);
-    if (ev.type === 'transcript') onTranscript(ev);
+    if (ev.type === 'context') onContext(ev);
+    else if (ev.type === 'transcript') onTranscript(ev);
     else if (ev.type === 'claim') onClaim(ev);
     else if (ev.type === 'verdict') onVerdict(ev);
     else if (ev.type === 'done') { setStatus('finished'); setLive(false); visLabel.textContent = 'FINISHED'; }

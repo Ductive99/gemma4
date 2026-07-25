@@ -16,9 +16,13 @@ from .events import Snippet, Verdict
 VALID_LABELS = {"TRUE", "FALSE", "MISLEADING", "UNVERIFIED"}
 
 SYSTEM_PROMPT = """You are a strict, neutral fact-check judge. You are given a CLAIM
-made during a live debate and EVIDENCE SNIPPETS retrieved from a web search. You do
-not know who said the claim and have no stake in it — judge only what the evidence
-actually shows.
+made during a live debate, who said it, the context of the video, and EVIDENCE
+SNIPPETS retrieved from a web search. Judge only what the evidence actually shows.
+
+You are told the speaker so you can tell whether the evidence is about the right
+person — evidence concerning someone else does not support a claim about this
+speaker's record. Knowing who spoke must NOT change how favourably you judge them;
+weigh both sides of a debate by exactly the same standard.
 
 Respond ONLY with valid JSON with EXACTLY these fields:
 - "label": one of "TRUE", "FALSE", "MISLEADING", "UNVERIFIED".
@@ -35,8 +39,19 @@ def _format_evidence(snippets: list[Snippet]) -> str:
     return "\n".join(f"[{i}] {s.title}: {s.text} ({s.link})" for i, s in enumerate(snippets))
 
 
-def judge_claim(claim_text: str, snippets: list[Snippet], model: str = None) -> Verdict:
-    user = f"CLAIM: {claim_text}\n\nEVIDENCE SNIPPETS:\n{_format_evidence(snippets)}"
+def judge_claim(
+    claim_text: str,
+    snippets: list[Snippet],
+    model: str = None,
+    speaker: str = "",
+    context_block: str = "",
+) -> Verdict:
+    user = (
+        f"CONTEXT:\n{context_block or '(no context available)'}\n\n"
+        f"SPEAKER: {speaker or '(unattributed)'}\n"
+        f"CLAIM: {claim_text}\n\n"
+        f"EVIDENCE SNIPPETS:\n{_format_evidence(snippets)}"
+    )
 
     response = ollama.chat(
         model=model or config.JUDGE_MODEL,
@@ -75,4 +90,5 @@ def judge_claim(claim_text: str, snippets: list[Snippet], model: str = None) -> 
         confidence=confidence,
         explanation=str(payload.get("explanation", "")),
         sources=source_links,
+        speaker=speaker,
     )
