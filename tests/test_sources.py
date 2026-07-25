@@ -1,7 +1,7 @@
 import json
 import threading
 
-from cassandra_agent import sources
+from redpen import sources
 
 
 def test_transcript_segments_reads_file(tmp_path):

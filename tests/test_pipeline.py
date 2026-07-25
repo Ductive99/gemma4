@@ -3,9 +3,9 @@ from unittest.mock import patch
 
 import pytest
 
-from cassandra_agent import config
-from cassandra_agent.events import Snippet, TranscriptSegment, Verdict
-from cassandra_agent.pipeline import DebateFactCheckPipeline
+from redpen import config
+from redpen.events import Snippet, TranscriptSegment, Verdict
+from redpen.pipeline import DebateFactCheckPipeline
 
 LONG = "x" * (config.CLAIM_SCAN_MIN_CHARS + 1)
 
@@ -26,10 +26,10 @@ async def test_handle_segment_emits_transcript_claim_and_verdict():
     loop = asyncio.get_event_loop()
     segment = TranscriptSegment(start=0.0, end=5.0, text=LONG)
 
-    with patch("cassandra_agent.pipeline.extract_claims", return_value=[{"claim": "Unemployment hit 3%.", "speaker": "Speaker B",
+    with patch("redpen.pipeline.extract_claims", return_value=[{"claim": "Unemployment hit 3%.", "speaker": "Speaker B",
                                  "search_query": "unemployment rate 3 percent"}]) as mock_extract, \
-         patch("cassandra_agent.pipeline.search_evidence", return_value=[Snippet("t", "s", "https://x", "x")]) as mock_search, \
-         patch("cassandra_agent.pipeline.judge_claim") as mock_judge:
+         patch("redpen.pipeline.search_evidence", return_value=[Snippet("t", "s", "https://x", "x")]) as mock_search, \
+         patch("redpen.pipeline.judge_claim") as mock_judge:
         mock_judge.return_value = Verdict(
             claim_id="", claim_text="Unemployment hit 3%.",
             label="TRUE", confidence=0.8, explanation="matches", sources=["https://x"],
@@ -51,7 +51,7 @@ async def test_claim_scan_is_debounced_until_enough_new_speech():
     pipeline = DebateFactCheckPipeline(emit=emit)
     loop = asyncio.get_event_loop()
 
-    with patch("cassandra_agent.pipeline.extract_claims", return_value=[]) as mock_extract:
+    with patch("redpen.pipeline.extract_claims", return_value=[]) as mock_extract:
         await pipeline._handle_segment(TranscriptSegment(0.0, 1.0, "short"), loop)
         mock_extract.assert_not_called()  # below threshold - no Gemma call
 
@@ -66,9 +66,9 @@ async def test_handle_segment_skips_already_flagged_claims():
     pipeline._flagged_claims.append("Already known claim.")
     loop = asyncio.get_event_loop()
 
-    with patch("cassandra_agent.pipeline.extract_claims", return_value=[{"claim": "Already known claim.", "speaker": "", "search_query": "q"}]), \
-         patch("cassandra_agent.pipeline.search_evidence") as mock_search, \
-         patch("cassandra_agent.pipeline.judge_claim") as mock_judge:
+    with patch("redpen.pipeline.extract_claims", return_value=[{"claim": "Already known claim.", "speaker": "", "search_query": "q"}]), \
+         patch("redpen.pipeline.search_evidence") as mock_search, \
+         patch("redpen.pipeline.judge_claim") as mock_judge:
         await pipeline._handle_segment(TranscriptSegment(0.0, 5.0, LONG), loop)
         await asyncio.sleep(0.05)
 
@@ -83,7 +83,7 @@ async def test_window_drops_segments_outside_transcript_window():
     pipeline = DebateFactCheckPipeline(emit=emit)
     loop = asyncio.get_event_loop()
 
-    with patch("cassandra_agent.pipeline.extract_claims", return_value=[]) as mock_extract:
+    with patch("redpen.pipeline.extract_claims", return_value=[]) as mock_extract:
         await pipeline._handle_segment(TranscriptSegment(0.0, 5.0, "old text " + LONG), loop)
         await pipeline._handle_segment(TranscriptSegment(100.0, 105.0, "new text " + LONG), loop)
 
@@ -98,8 +98,8 @@ async def test_fact_check_failure_emits_unverified_instead_of_crashing():
     pipeline = DebateFactCheckPipeline(emit=emit)
     loop = asyncio.get_event_loop()
 
-    with patch("cassandra_agent.pipeline.extract_claims", return_value=[{"claim": "a claim", "speaker": "", "search_query": "q"}]), \
-         patch("cassandra_agent.pipeline.search_evidence", side_effect=RuntimeError("serpapi down")):
+    with patch("redpen.pipeline.extract_claims", return_value=[{"claim": "a claim", "speaker": "", "search_query": "q"}]), \
+         patch("redpen.pipeline.search_evidence", side_effect=RuntimeError("serpapi down")):
         await pipeline._handle_segment(TranscriptSegment(0.0, 5.0, LONG), loop)
         await asyncio.sleep(0.05)
 
@@ -115,7 +115,7 @@ async def test_run_records_events_for_offline_replay():
     pipeline = DebateFactCheckPipeline(emit=emit)
     loop = asyncio.get_event_loop()
 
-    with patch("cassandra_agent.pipeline.extract_claims", return_value=[]):
+    with patch("redpen.pipeline.extract_claims", return_value=[]):
         await pipeline._handle_segment(TranscriptSegment(0.0, 5.0, LONG), loop)
 
     assert len(pipeline.recorded) == 1
@@ -134,9 +134,9 @@ async def test_speaker_aware_search_query_is_what_reaches_serpapi():
                 "speaker": "Dr. Lena Farrow",
                 "search_query": "Marc Devereux vote energy bill"}]
 
-    with patch("cassandra_agent.pipeline.extract_claims", return_value=spotted), \
-         patch("cassandra_agent.pipeline.search_evidence", return_value=[]) as mock_search, \
-         patch("cassandra_agent.pipeline.judge_claim") as mock_judge:
+    with patch("redpen.pipeline.extract_claims", return_value=spotted), \
+         patch("redpen.pipeline.search_evidence", return_value=[]) as mock_search, \
+         patch("redpen.pipeline.judge_claim") as mock_judge:
         mock_judge.return_value = Verdict(
             claim_id="", claim_text=spotted[0]["claim"], label="UNVERIFIED",
             confidence=0.2, explanation="", sources=[], speaker="Dr. Lena Farrow")
@@ -156,7 +156,7 @@ async def test_transcript_window_is_speaker_labelled():
     pipeline = DebateFactCheckPipeline(emit=emit)
     loop = asyncio.get_event_loop()
 
-    with patch("cassandra_agent.pipeline.extract_claims", return_value=[]) as mock_extract:
+    with patch("redpen.pipeline.extract_claims", return_value=[]) as mock_extract:
         await pipeline._handle_segment(
             TranscriptSegment(0.0, 5.0, LONG, speaker="Marc Devereux"), loop)
 

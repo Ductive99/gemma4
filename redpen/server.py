@@ -15,7 +15,7 @@ from .pipeline import DebateFactCheckPipeline
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
-app = FastAPI(title="Cassandra Live — Debate Fact Checker")
+app = FastAPI(title="Red Pen — Debate Fact Checker")
 
 
 class Session:

@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-echo "Preparing Cassandra Live..."
+echo "Preparing Red Pen..."
 
 if ! pgrep -x "ollama" > /dev/null
 then
@@ -20,4 +20,4 @@ if [ -d "venv" ]; then
 fi
 
 echo "Starting web app on http://localhost:8000"
-uvicorn cassandra_agent.server:app --host 0.0.0.0 --port 8000
+uvicorn redpen.server:app --host 0.0.0.0 --port 8000

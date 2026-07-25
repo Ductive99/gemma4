@@ -1,6 +1,6 @@
 """Verdict engine: Gemma weighs a claim against external evidence snippets only.
 
-Keeps the original Cassandra principle of separation of powers — Gemma never
+Keeps the original Red Pen principle of separation of powers — Gemma never
 judges its own reasoning here. It only ever sees a claim someone else made and
 evidence retrieved from the web; it has no memory of, and no stake in, how the
 claim was produced.

@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from cassandra_agent import evidence
+from redpen import evidence
 
 
 def test_search_evidence_returns_snippets():
