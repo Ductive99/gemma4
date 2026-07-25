@@ -61,3 +61,33 @@ def test_context_block_is_sent_to_the_model():
         claims.extract_claims("window", [], context_block="Known participants: Ada, Grace")
     sent = mock_ollama.chat.call_args.kwargs["messages"][1]["content"]
     assert "Known participants: Ada, Grace" in sent
+
+
+def test_strip_attribution_removes_the_speakers_own_framing():
+    f = claims.strip_attribution
+    assert f("Mark Zuckerberg said that Meta has 3 billion users.", "Mark Zuckerberg") \
+        == "Meta has 3 billion users."
+    assert f("According to Lena Farrow, the Act took force in 2024.", "Lena Farrow") \
+        == "The Act took force in 2024."
+    assert f("Marc Devereux claims inflation fell.", "Marc Devereux") == "Inflation fell."
+
+
+def test_strip_attribution_keeps_third_party_attribution_and_subjects():
+    f = claims.strip_attribution
+    # the IEA is the subject, not the speaker — the attribution IS the claim
+    assert f("The IEA said in 2020 that solar is cheapest.", "Lena Farrow") \
+        == "The IEA said in 2020 that solar is cheapest."
+    # a claim about the opponent must keep their name
+    assert f("Marc Devereux voted against the bill.", "Lena Farrow") \
+        == "Marc Devereux voted against the bill."
+    assert f("Unemployment fell to 3.5 percent.", "Marc") == "Unemployment fell to 3.5 percent."
+
+
+def test_extract_claims_strips_attribution_from_the_model_output():
+    with patch.object(claims, "ollama") as mock_ollama:
+        mock_ollama.chat.return_value = _fake_chat({"claims": [
+            {"claim": "Mark Zuckerberg said that Meta has 3 billion users.",
+             "speaker": "Mark Zuckerberg", "search_query": "Meta monthly active users"}]})
+        result = claims.extract_claims("window", already_flagged=[])
+    assert result[0]["claim"] == "Meta has 3 billion users."
+    assert result[0]["speaker"] == "Mark Zuckerberg"

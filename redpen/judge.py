@@ -37,6 +37,15 @@ claims are true or false *as of a particular moment*. So:
   across periods AND you cannot tell which period applies to the claim.
 Do not rely on your own sense of the current date; use the dates given.
 
+EVIDENCE THAT ONLY REPORTS THE CLAIM IS NOT EVIDENCE. A page saying "<person>
+said X", "<person> claimed X" or "<outlet> reports that X" establishes only that
+the statement was made — it does nothing to show whether X is true. Do not count
+such coverage as support. If every snippet merely relays somebody asserting the
+claim, and none independently establishes the underlying fact, the label is
+UNVERIFIED no matter how many outlets repeated it. The exception is when the claim
+is itself about what somebody said; then reporting of the statement is exactly the
+right evidence.
+
 Respond ONLY with valid JSON with EXACTLY these fields:
 - "label": one of "TRUE", "FALSE", "MISLEADING", "UNVERIFIED".
   Reach a verdict whenever the evidence supports one. If the evidence points one way
