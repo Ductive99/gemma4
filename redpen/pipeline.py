@@ -27,12 +27,33 @@ import uuid
 from typing import Awaitable, Callable
 
 from . import config, sources
+from .fetch import _keywords, _WORD
 from .claims import extract_claims
 from .evidence import search_evidence
+from .fetch import enrich
 from .events import Claim, SessionContext, TranscriptSegment
 from .judge import judge_claim
 
 EmitFn = Callable[[dict], Awaitable[None]]
+
+
+def _spoken_at(claim_text: str, window: list) -> float:
+    """Which segment in the window actually contains this claim.
+
+    The scan fires on the segment that crossed the debounce threshold, which is
+    at or after the claim was spoken — so using it directly would surface claims
+    late. Match the claim back to its own segment instead.
+    """
+    keys = _keywords(claim_text)
+    if not keys or not window:
+        return window[-1].start if window else 0.0
+    best, best_score = window[-1], -1.0
+    for segment in window:
+        words = set(_WORD.findall(segment.text.lower()))
+        score = len(keys & words) / len(keys)
+        if score > best_score:
+            best, best_score = segment, score
+    return best.start
 
 
 class DebateFactCheckPipeline:
@@ -174,7 +195,7 @@ class DebateFactCheckPipeline:
                     id=uuid.uuid4().hex,
                     text=claim_text,
                     context=window_text,
-                    timestamp=segment.start,
+                    timestamp=_spoken_at(claim_text, window),
                     speaker=entry.get("speaker", "") or segment.speaker,
                     search_query=entry.get("search_query", "") or claim_text,
                 )
@@ -186,6 +207,7 @@ class DebateFactCheckPipeline:
                 snippets = await loop.run_in_executor(
                     None, search_evidence, claim.search_query, self.serpapi_key
                 )
+                snippets = await loop.run_in_executor(None, enrich, snippets, claim.text)
                 verdict = await loop.run_in_executor(
                     None, judge_claim, claim.text, snippets, self.judge_model,
                     claim.speaker, self.context.to_prompt_block(),
@@ -271,7 +293,7 @@ class DebateFactCheckPipeline:
                 id=uuid.uuid4().hex,
                 text=claim_text,
                 context=window_text,
-                timestamp=segment.end,
+                timestamp=_spoken_at(claim_text, self._window),
                 speaker=entry.get("speaker", "") or segment.speaker,
                 search_query=entry.get("search_query", "") or claim_text,
             )
@@ -287,6 +309,7 @@ class DebateFactCheckPipeline:
             snippets = await loop.run_in_executor(
                 None, search_evidence, claim.search_query, self.serpapi_key
             )
+            snippets = await loop.run_in_executor(None, enrich, snippets, claim.text)
             verdict = await loop.run_in_executor(
                 None, judge_claim, claim.text, snippets, self.judge_model,
                 claim.speaker, self.context.to_prompt_block(),

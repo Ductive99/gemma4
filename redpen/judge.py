@@ -53,6 +53,7 @@ def _format_evidence(snippets: list[Snippet]) -> str:
     return "\n".join(
         f"[{i}] {s.title}"
         f"{f' [published {s.date}]' if s.date else ' [date unknown]'}"
+        f"{' [full page]' if s.full_page else ' [search snippet only]'}"
         f": {s.text} ({s.link})"
         for i, s in enumerate(snippets)
     )

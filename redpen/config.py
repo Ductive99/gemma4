@@ -31,5 +31,11 @@ REPLAY_SPEED = float(os.environ.get("REPLAY_SPEED", "1.0"))
 # reaches it — the same idea as prefetching, applied to inference. These are the
 # offsets, in video seconds, from when a claim is spoken to when its card and
 # then its verdict are surfaced.
-REVEAL_CLAIM_DELAY = float(os.environ.get("REVEAL_CLAIM_DELAY", "2.0"))
+FETCH_PAGES = os.environ.get("FETCH_PAGES", "1") not in ("0", "false", "False")
+PAGE_FETCH_LIMIT = int(os.environ.get("PAGE_FETCH_LIMIT", "4"))
+PAGE_FETCH_TIMEOUT = float(os.environ.get("PAGE_FETCH_TIMEOUT", "6"))
+PAGE_MAX_BYTES = int(os.environ.get("PAGE_MAX_BYTES", str(1_500_000)))
+PAGE_EXTRACT_CHARS = int(os.environ.get("PAGE_EXTRACT_CHARS", "1200"))
+
+REVEAL_CLAIM_DELAY = float(os.environ.get("REVEAL_CLAIM_DELAY", "0"))
 REVEAL_VERDICT_DELAY = float(os.environ.get("REVEAL_VERDICT_DELAY", "7.0"))
